@@ -305,7 +305,7 @@ classdef Visualizer < DrakeSystem
             set(slider{i},'Value',x(state_dims(i)));
           end
         end
-        x0 = x;
+        x0 = x
         obj.drawWrapper(t,x);
 
         if (~isempty(visualized_system) && max(state_dims)>getNumPositions(visualized_system) && isa(obj,'RigidBodyVisualizer'))
