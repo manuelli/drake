@@ -290,18 +290,6 @@ classdef QPControllerContacts < MIMODrakeSystem
       
       condof = ctrl_data.constrained_dofs; % dof indices for which qdd_des is a constraint
       
-      Everything from here down should be the same
-      % I just need to update how we get support_bodies, contacts_pts,
-      % contact_groups etc . . .
-      %       supp.bodies = support_bodies;
-      %
-      %       % the way I am going to set it up it should be that supp.contact_pts
-      %       % are everything????? Not sure what these contact_pts really are
-      %       supp.contact_pts = plan_supp.contact_pts;
-      %       supp.contact_groups = contact_groups;
-      %       supp.num_contact_pts = n_contact_pts;
-      %       supp.contact_surfaces = 0*support_bodies;
-      
       %% Original
       
       % TODO: generalize this again to arbitrary body contacts
@@ -310,7 +298,16 @@ classdef QPControllerContacts < MIMODrakeSystem
       contact_groups = {};
       n_contact_pts = [];
       supp_idx = find(ctrl_data.support_times<=t,1,'last');
-      supp = ctrl_data.supports(supp_idx);
+      
+      plan_supp = ctrl_data.supports(supp_idx);
+      
+      % really could just do supp = plan_supp?
+      
+      supp.bodies = plan_supp.bodies;
+      supp.contact_pts = plan_supp.contact_pts;
+      supp.contact_groups = plan_supp.contact_groups;
+      supp.num_contact_pts = plan_supp.num_contact_pts;
+      supp.contact_surfaces = 0*plan_supp.bodies;
       
       
       %% Extra checking within the loop
