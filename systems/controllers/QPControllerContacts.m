@@ -290,19 +290,11 @@ classdef QPControllerContacts < MIMODrakeSystem
       
       condof = ctrl_data.constrained_dofs; % dof indices for which qdd_des is a constraint
       
-      %% Original
-      
-      % TODO: generalize this again to arbitrary body contacts
-      support_bodies = [];
-      contact_pts = {};
-      contact_groups = {};
-      n_contact_pts = [];
+      % find active idx
       supp_idx = find(ctrl_data.support_times<=t,1,'last');
-      
       plan_supp = ctrl_data.supports(supp_idx);
       
-      % really could just do supp = plan_supp?
-      
+      % in keeping with structure of QPController.m
       supp.bodies = plan_supp.bodies;
       supp.contact_pts = plan_supp.contact_pts;
       supp.contact_groups = plan_supp.contact_groups;
@@ -320,7 +312,7 @@ classdef QPControllerContacts < MIMODrakeSystem
       if (obj.use_mex==0 || obj.use_mex==2)
         kinsol = doKinematics(r,q,false,true,qd);
         
-        % Don't really need these anymore, just use them for convenience
+        % Use this in keeping with QPController.m
         active_supports = supp.bodies;
         active_contact_pts = supp.contact_pts;
         active_contact_groups = supp.contact_groups;
