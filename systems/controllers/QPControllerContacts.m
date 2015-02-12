@@ -55,7 +55,7 @@ classdef QPControllerContacts < MIMODrakeSystem
         sizecheck(options.contact_threshold,[1 1]);
         obj.contact_threshold = options.contact_threshold;
       else
-        obj.contact_threshold = 0.001;
+        obj.contact_threshold = 0.01;
       end
       
       
@@ -357,6 +357,9 @@ classdef QPControllerContacts < MIMODrakeSystem
           Jcomdot = Jcomdot(1:2,:);
         end
         
+        % initialize Jp, Jpdot
+        Jp = [];
+        Jpdot = [];
         if ~isempty(active_supports)
           nc = sum(num_active_contacts);
           c_pre = 0;
@@ -367,12 +370,12 @@ classdef QPControllerContacts < MIMODrakeSystem
             
             % only pick up those that are active
             active_ind = phi<=obj.contact_threshold;
-            
-            c_pre = c_pre + length(active_ind);
+            I = find(phi <= obj.contact_threshold);
+            c_pre = c_pre + length(I);
             Dbar = [Dbar, vertcat(JB{active_ind})'];
             
             % get the terrain contact points
-            terrain_pts = getTerrainContactPoints(r,planned_supports(j),planned_contact_groups(j));
+            terrain_pts = getTerrainContactPoints(r,active_supports(j),active_contact_groups(j));
             pts = [terrain_pts.pts];
             pts = pts(:,active_ind);
             
