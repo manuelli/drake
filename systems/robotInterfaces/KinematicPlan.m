@@ -1,10 +1,9 @@
 classdef KinematicPlan < QPControllerPlan
 
-  import atlasControllers.*
-
   properties
     supports;
     support_times;
+    support_names; % cell array of all supports used in the plan
     c_pts;
     linkId;
     qtraj;
@@ -14,12 +13,16 @@ classdef KinematicPlan < QPControllerPlan
 
   methods
 
-    function obj = KinematicPlan(qtraj,data)
-      obj = obj.initializeSupports(obj,data.supports);
+    function obj = KinematicPlan(data)
+      
+      % data_supports should be a cell array of cell arrays
+      support_data = data.supports;
+      obj = obj.initializeSupports(support_data);
       obj.support_times = data.support_times;
       obj.c_pts = data.c_pts;
       obj.linkId = data.linkId;
-      obj.qtraj = qtraj;
+      obj.qtraj = data.qtraj;
+      obj.duration = obj.qtraj.tspan(2) - obj.qtraj.tspan(1);
 
       % choose the type of support logic to implement
       if isfield(data,'support_logic_type')
@@ -29,24 +32,25 @@ classdef KinematicPlan < QPControllerPlan
       end
     end
 
-    function obj = initializeSupports(obj,data.supports)
+    function obj = initializeSupports(obj,support_data)
       % list of all the supports utilized in the plan
       support_names = containers.Map;
-      for j = numel(data.supports)
-        for k = numel(data(j).supports)
-          name = data(j).supports{k};
-          if ~iskey(support_names,name)
+      for j = 1:numel(support_data)
+        for k = 1:numel(support_data{j})
+          name = support_data{j}{k};
+          if ~isKey(support_names,name)
             support_names(name) = true;
           end
         end
       end
+      obj.support_names = keys(support_names);
 
       % cell array of container maps
       supports = {};
-      for j = 1:numel(data.supports)
+      for j = 1:numel(support_data)
         supp = containers.Map;
-        for k = 1:numel(data(j).supports)
-          name = data(j).supports{k};
+        for k = 1:numel(support_data{j})
+          name = support_data{j}{k};
           supp(name) = struct('in_support',1,'breaking_contact',0);
         end
 
@@ -55,12 +59,14 @@ classdef KinematicPlan < QPControllerPlan
 
         for k = 1:numel(non_active_contacts)
           name = non_active_contacts{k};
-          supp(name) = struct('in_support',1,'breaking_contact',0);
+          supp(name) = struct('in_support',0,'breaking_contact',0);
 
           % check to see if it is breaking contact, only do this for j > 1
           % this means it was in support at the previous time step
           if (j>1) && supports{j-1}(name).in_support
-            supp(name).breaking_contact = 1;
+            temp = supp(name);
+            temp.breaking_contact = 1;
+            supp(name) = temp;
           end
         end
 
@@ -72,25 +78,30 @@ classdef KinematicPlan < QPControllerPlan
     end
 
     function qp_input = getQPControllerInput(obj,t_global,x)
+      import atlasControllers.*
       % convert global time to plan time
       t = t_global - obj.start_time;
       qp_input = QPInput3D();
       qp_input = obj.setSupportData(t,x,qp_input);
-      qp_input = obj.setDefaultCosts(qp_input);
+      %qp_input = obj.setDefaultCosts(qp_input);
 
       % not sure what support_data.param_set_name should be, by default it is set to 'walking'
     end
 
-    % this will be very basic at the moment, need to implement the breaking contact logic as well
-    function support_data = setSupportData(obj,t,x,qp_input)
+    % Implements three types of support logic depending on whether it is active in the plan, whether it is just 
+    % breaking support, or any remaining situation
+    function qp_input = setSupportData(obj,t,x,qp_input)
+      % this t is already in plan time
+
       support_data = qp_input.support_data;
       I = find(obj.support_times < t);
       idx = I(end);
-      supp = obj.supp(idx); % supports plan thinks are active
+      supp = obj.supports{idx}; % supports plan thinks are active
 
       % now construct the support data for each possible contact
-      for j = 1:numel(keys(supp))
-        name = keys(supp){j};
+      % obj.support_names is exactly keys(supp)
+      for j = 1:numel(obj.support_names)
+        name = obj.support_names{j};
         support_data(j).body_id = obj.linkId(name);
         support_data(j).contact_pts = obj.c_pts(name);
         support_data(j).mu = 1;
@@ -98,14 +109,14 @@ classdef KinematicPlan < QPControllerPlan
 
         % apply the correct contact logic
         if supp(name).in_support
-          support_data(j).support_logic_map = getfield(obj.support_logic_maps,support_logic_type);
+          support_data(j).support_logic_map = obj.support_logic_maps.(obj.support_logic_type);
         % if we are just breaking support with that contact then use 'prevent_support'
         elseif supp(name).breaking_contact && ((t - obj.support_times(idx)) < obj.breaking_contact_time_threshold)
-          support_data(j).support_logic_map = getfield(obj.support_logic_maps,'prevent_support');
+          support_data(j).support_logic_map = obj.support_logic_maps.prevent_support;
         else
           % in this case it isn't in contact but it hasn't just broken contact so use kinematics/force to 
           % determine whether it is in contact
-          support_data(j).support_logic_map = getfield(obj.support_logic_maps,'kinematics_or_sensed');
+          support_data(j).support_logic_map = obj.support_logic_maps.kinematic_or_sensed;
         end    
 
       end

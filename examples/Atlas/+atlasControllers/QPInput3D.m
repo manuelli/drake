@@ -9,6 +9,7 @@ classdef QPInput3D
     bodies_data 
     whole_body_data 
     param_set_name
+    body_motion_data
   end
 
   methods
