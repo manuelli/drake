@@ -13,6 +13,8 @@ classdef KinematicPlan < QPControllerPlan
 
   methods
 
+    % @param data: should have fields, supports, support_times, c_pts, linkId, qtraj and optionally
+    % support_logic_type
     function obj = KinematicPlan(data)
       
       % data_supports should be a cell array of cell arrays
