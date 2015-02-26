@@ -1,6 +1,5 @@
 classdef AtlasPlanlessQPController 
   properties(SetAccess=private, GetAccess=public);
-    foot_contact;
     body_accel_pd;
     debug;
     debug_pub;
@@ -21,12 +20,13 @@ classdef AtlasPlanlessQPController
     actuated_inds;
     use_mex;
     mex_ptr;
+    support_detect_mex_ptr;
     use_bullet = false;
+    using_flat_terrain;
 
     param_sets
 
     joint_limits = struct('min', [], 'max', []);
-    dt;
 
 
     gurobi_options = struct();
@@ -34,12 +34,11 @@ classdef AtlasPlanlessQPController
   end
 
   methods
-    function obj = AtlasPlanlessQPController(r, foot_contact, body_accel_pd, param_sets, options)
+    function obj = AtlasPlanlessQPController(r, body_accel_pd, param_sets, options)
       options = applyDefaults(options,...
         struct('debug', false,...
                'use_mex', 1, ...
-               'solver', 0,...
-               'dt', 0.001),...
+               'solver', 0),...
         struct('debug', @(x) typecheck(x, 'logical') && sizecheck(x, 1),...
                'use_mex', @isscalar, ...
                'solver', @(x) x == 0 || x == 1));
@@ -60,7 +59,6 @@ classdef AtlasPlanlessQPController
       obj.actuated_inds = r.getActuatedJoints();
       import atlasControllers.*;
       import atlasFrames.*;
-      obj.foot_contact = foot_contact;
       obj.body_accel_pd = body_accel_pd;
 
       obj.knee_ind = struct('right', r.findPositionIndices('r_leg_kny'),...
@@ -94,8 +92,10 @@ classdef AtlasPlanlessQPController
         terrain = getTerrain(r);
         if isa(terrain,'DRCTerrainMap')
           terrain_map_ptr = terrain.map_handle.getPointerForMex();
+          obj.using_flat_terrain = false;
         else
           terrain_map_ptr = 0;
+          obj.using_flat_terrain = true;
         end
         obj.mex_ptr = SharedDataHandle(constructQPDataPointer(obj.robot.getMexModelPtr.ptr,...
           obj.robot.getB(), obj.robot.umin, obj.robot.umax,...
@@ -116,18 +116,26 @@ classdef AtlasPlanlessQPController
       % first, figure out which bodies need to be checked for kinematic contact
       % We'll do this by reading out the contact logic maps for each body. For
       % a description of what these do, see QPInput2D.m
-      logic_maps = [support_data.support_logic_map];
       % we only need to check kinematic contact if it would affect our decision about
       % whether or not the body is in contact. 
-      needs_kin_check = ((logic_maps(2,:) ~= logic_maps(1,:)) & (~contact_sensor)) | ...
-                        ((logic_maps(4,:) ~= logic_maps(3,:)) & contact_sensor);
-
+      needs_kin_check = false(obj.numbod, 1);
+      for j = 1:length(support_data)
+        body_id = support_data(j).body_id;
+        if ((support_data(j).support_logic_map(2) ~= support_data(j).support_logic_map(1)) && (~contact_sensor(body_id))) || ...
+           ((support_data(j).support_logic_map(4) ~= support_data(j).support_logic_map(3)) && (contact_sensor(body_id)))
+          needs_kin_check(body_id) = true;
+        end
+      end
 
       obj.robot.warning_manager.warnOnce('Drake:NotDoingSupportDetect', 'support detect not implemented here');
       kin_sensor = false(obj.numbod, 1);
       kin_sensor(needs_kin_check) = true;
 
-      active_support_mask = obj.applyContactLogic(logic_maps, contact_sensor, kin_sensor);
+      active_support_mask = false(length(support_data), 1);
+      for j = 1:length(support_data)
+        body_id = support_data(j).body_id;
+        active_support_mask(j) = obj.applyContactLogic(support_data(j).support_logic_map, contact_sensor(body_id), kin_sensor(body_id));
+      end
       supp = support_data(active_support_mask);
 
       for j = 1:length(supp)
@@ -142,7 +150,7 @@ classdef AtlasPlanlessQPController
       end
       dt = t - obj.q_integrator_data.t_prev;
       obj.q_integrator_data.t_prev = t;
-      new_int_state = params.integrator.eta * obj.q_integrator_data.state + params.integrator.gains .* (q_des - q) * obj.dt;
+      new_int_state = params.integrator.eta * obj.q_integrator_data.state + params.integrator.gains .* (q_des - q) * dt;
       if any(new_int_state)
         new_int_state = max(-params.integrator.clamp, min(params.integrator.clamp, new_int_state));
         q_des = q_des + new_int_state;
@@ -254,7 +262,8 @@ classdef AtlasPlanlessQPController
       
       q = x(1:obj.numq);
       qd = x(obj.numq+(1:obj.numv));
-      mu = qp_input.support_data.mu;
+      
+      mu = qp_input.support_data(1).mu;
       condof = params.whole_body.constrained_dofs;
 
       % Run PD on the desired configuration
@@ -269,19 +278,27 @@ classdef AtlasPlanlessQPController
       end
       supp = obj.getActiveSupports(qp_input.support_data, contact_sensor, params.contact_threshold);
       % Messy reorganization for compatibility with supportDetectMex
-      supp = struct('bodies', {[supp.body_id]}, 'contact_pts', {{supp.contact_pts}}, 'contact_surfaces', {{supp.contact_surfaces}});
+      bods = zeros(1, length(supp));
+      pts = cell(1, length(supp));
+      surfaces = cell(1, length(supp));
+      for j = 1:length(supp)
+        bods(j) = supp(j).body_id;
+        pts{j} = supp(j).contact_pts;
+        surfaces{j} = supp(j).contact_surfaces;
+      end
+      supp = struct('bodies', {bods}, 'contact_pts', {pts}, 'contact_surfaces', {surfaces});
 
-      [w_qdd, qddot_des] = obj.kneePD(q, qd, w_qdd, qddot_des, qp_input.support_data.toe_off, params.min_knee_angle);
+      [w_qdd, qddot_des] = obj.kneePD(q, qd, w_qdd, qddot_des, struct('right', false, 'left', false), params.min_knee_angle);
 
-      all_bodies_vdot = struct('body_id', cell(1,length(qp_input.bodies_data)),...
-                               'body_vdot', cell(1,length(qp_input.bodies_data)),...
-                               'params', cell(1,length(qp_input.bodies_data)));
+      all_bodies_vdot = struct('body_id', cell(1,length(qp_input.body_motion_data)),...
+                               'body_vdot', cell(1,length(qp_input.body_motion_data)),...
+                               'params', cell(1,length(qp_input.body_motion_data)));
       num_tracked_bodies = 0;
-      for j = 1:length(qp_input.bodies_data)
-        body_id = qp_input.bodies_data(j).body_id;
+      for j = 1:length(qp_input.body_motion_data)
+        body_id = qp_input.body_motion_data(j).body_id;
         if ~isempty(body_id) && params.body_motion(body_id).weight ~= 0
           num_tracked_bodies = num_tracked_bodies + 1;
-          [body_des, body_v_des, body_vdot_des] = evalCubicSplineSegment(t - qp_input.bodies_data(j).ts(1), qp_input.bodies_data(j).coefs);
+          [body_des, body_v_des, body_vdot_des] = evalCubicSplineSegment(t - qp_input.body_motion_data(j).ts(1), qp_input.body_motion_data(j).coefs);
           body_vdot = obj.body_accel_pd(r, x, body_id,...
                                         body_des, body_v_des, body_vdot_des, params.body_motion(body_id));
           all_bodies_vdot(num_tracked_bodies).body_id = body_id; 
@@ -298,7 +315,7 @@ classdef AtlasPlanlessQPController
 
       use_fastqp = obj.solver == 0;
 
-      if obj.foot_contact.using_flat_terrain
+      if obj.using_flat_terrain
         height = getTerrainHeight(r,[0;0]); % get height from DRCFlatTerrainMap
       else
         height = 0;
@@ -473,4 +490,11 @@ classdef AtlasPlanlessQPController
       end
     end
   end
+  
+  methods(Static)
+    function tf = applyContactLogic(support_logic_map, body_force_sensor, body_kin_sensor)
+      tf = support_logic_map(2*logical(body_force_sensor) + logical(body_kin_sensor)+1);
+    end
+  end
+    
 end

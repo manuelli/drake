@@ -6,7 +6,7 @@ classdef PlanEval
   methods
     function obj = PlanEval(plans)
       obj.data = atlasControllers.PlanEvalData();
-      if nargin > 1
+      if nargin >= 1
         if iscell(plans)
           for j = 1:length(plans)
             obj = obj.appendPlan(plans{j});
@@ -17,21 +17,23 @@ classdef PlanEval
       end
     end
 
-    function current_plan = getCurrentPlan(obj)
-      current_plan = obj.data.plan_queue{1};
-      while t > current_plan.end_time
+    function current_plan = getCurrentPlan(obj, t)
+      while true
+        current_plan = obj.data.plan_queue{1};
+        if (t - current_plan.start_time) < current_plan.duration
+          break
+        end
         if length(obj.data.plan_queue) == 1
           obj.data.plan_queue{1} = current_plan.getSuccessor(t, x);
         else
           obj.data.plan_queue(1) = [];
-          obj.data.plan_queue{1}.start_time = t;
-          current_plan = obj.data.plan_queue{1};
         end
+        obj.data.plan_queue{1}.start_time = t;
       end
     end
 
     function qp_input = getQPControllerInput(obj, t, x)
-      current_plan = obj.getCurrentPlan();
+      current_plan = obj.getCurrentPlan(t);
       qp_input = current_plan.getQPControllerInput(t, x);
     end
 
