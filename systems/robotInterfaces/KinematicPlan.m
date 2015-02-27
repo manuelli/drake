@@ -1,7 +1,7 @@
 classdef KinematicPlan < QPControllerPlan
 
   properties
-    supports;
+    supports; % cell array of container.Maps containing information about the supports
     support_times;
     support_names; % cell array of all supports used in the plan
     c_pts;
