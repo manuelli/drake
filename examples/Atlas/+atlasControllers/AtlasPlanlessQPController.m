@@ -109,41 +109,6 @@ classdef AtlasPlanlessQPController
 
     end
 
-    function supp = getActiveSupports(obj, support_data, contact_sensor, contact_threshold)
-      % Combine information from the plan, the kinematic sensors, and the force sensors (if available)
-      % to decide which bodies are in active support right now. 
-
-      % first, figure out which bodies need to be checked for kinematic contact
-      % We'll do this by reading out the contact logic maps for each body. For
-      % a description of what these do, see QPInput2D.m
-      % we only need to check kinematic contact if it would affect our decision about
-      % whether or not the body is in contact. 
-      needs_kin_check = false(obj.numbod, 1);
-      for j = 1:length(support_data)
-        body_id = support_data(j).body_id;
-        if ((support_data(j).support_logic_map(2) ~= support_data(j).support_logic_map(1)) && (~contact_sensor(body_id))) || ...
-           ((support_data(j).support_logic_map(4) ~= support_data(j).support_logic_map(3)) && (contact_sensor(body_id)))
-          needs_kin_check(body_id) = true;
-        end
-      end
-
-      obj.robot.warning_manager.warnOnce('Drake:NotDoingSupportDetect', 'support detect not implemented here');
-      kin_sensor = false(obj.numbod, 1);
-      kin_sensor(needs_kin_check) = true;
-
-      active_support_mask = false(length(support_data), 1);
-      for j = 1:length(support_data)
-        body_id = support_data(j).body_id;
-        active_support_mask(j) = obj.applyContactLogic(support_data(j).support_logic_map, contact_sensor(body_id), kin_sensor(body_id));
-      end
-      supp = support_data(active_support_mask);
-
-      for j = 1:length(supp)
-        supp(j).num_contact_pts = size(supp(j).contact_pts, 2);
-        supp(j).contact_surfaces = 0;
-      end
-    end
-
     function qddot_des = wholeBodyPID(obj, t, q, qd, q_des, params)
       if isnan(obj.q_integrator_data.t_prev)
         obj.q_integrator_data.t_prev = t;
@@ -235,19 +200,6 @@ classdef AtlasPlanlessQPController
       t0 = tic();
 
       % Unpack variable names (just to make our code a bit easier to read)
-      A_ls = qp_input.zmp_data.A;
-      B_ls = qp_input.zmp_data.B;
-      C_ls = qp_input.zmp_data.C;
-      D_ls = qp_input.zmp_data.D;
-      Qy = qp_input.zmp_data.Qy;
-      R_ls = qp_input.zmp_data.R;
-      S = qp_input.zmp_data.S;
-      s1 = qp_input.zmp_data.s1;
-      s1dot = 0;
-      s2dot = 0;
-      x0 = qp_input.zmp_data.x0;
-      y0 = qp_input.zmp_data.y0;
-      u0 = qp_input.zmp_data.u0;
       ctrl_data = obj.controller_data;
       r = obj.robot;
       nq = obj.numq;
@@ -276,17 +228,35 @@ classdef AtlasPlanlessQPController
       if foot_contact_sensor(2) > 0.5
         contact_sensor(obj.foot_body_id.right) = 1;
       end
-      supp = obj.getActiveSupports(qp_input.support_data, contact_sensor, params.contact_threshold);
-      % Messy reorganization for compatibility with supportDetectMex
-      bods = zeros(1, length(supp));
-      pts = cell(1, length(supp));
-      surfaces = cell(1, length(supp));
-      for j = 1:length(supp)
-        bods(j) = supp(j).body_id;
-        pts{j} = supp(j).contact_pts;
-        surfaces{j} = supp(j).contact_surfaces;
+      if isjava(qp_input.support_data)
+        % Reconstruct the support data as a matlab struct for mex
+        % compatibility
+        available_supports = struct('body_id', cell(1, length(qp_input.support_data)),...
+                                    'contact_pts', cell(1, length(qp_input.support_data)),...
+                                    'support_logic_map', cell(1, length(qp_input.support_data)),...
+                                    'mu', cell(1, length(qp_input.support_data)),...
+                                    'contact_surfaces', cell(1, length(qp_input.support_data)));
+        for j = 1:length(qp_input.support_data)
+          available_supports(j).body_id = qp_input.support_data(j).body_id;
+          available_supports(j).contact_pts = qp_input.support_data(j).contact_pts;
+          available_supports(j).support_logic_map = qp_input.support_data(j).support_logic_map;
+          available_supports(j).mu = qp_input.support_data(j).mu;
+          available_supports(j).contact_surfaces = qp_input.support_data(j).contact_surfaces;
+        end
+      else
+        available_supports = qp_input.support_data;
       end
-      supp = struct('bodies', {bods}, 'contact_pts', {pts}, 'contact_surfaces', {surfaces});
+      for j = 1:length(available_supports)
+        % it's a pain to handle mxLogicals on the c++ side
+        available_supports(j).support_logic_map = double(available_supports(j).support_logic_map);
+      end
+
+
+      if obj.using_flat_terrain
+        height = getTerrainHeight(r,[0;0]); % get height from DRCFlatTerrainMap
+      else
+        height = 0;
+      end
 
       [w_qdd, qddot_des] = obj.kneePD(q, qd, w_qdd, qddot_des, struct('right', false, 'left', false), params.min_knee_angle);
 
@@ -315,19 +285,16 @@ classdef AtlasPlanlessQPController
 
       use_fastqp = obj.solver == 0;
 
-      if obj.using_flat_terrain
-        height = getTerrainHeight(r,[0;0]); % get height from DRCFlatTerrainMap
-      else
-        height = 0;
-      end
-
       if (obj.use_mex==0 || obj.use_mex==2)
+        % if t >= 0.1
+        %   keyboard();
+        % end
+        mask = getActiveSupportsmex(obj.mex_ptr.data, x, available_supports, contact_sensor, params.contact_threshold, height);
+        supp = available_supports(logical(mask));
         [y, qdd, info_fqp, active_supports,...
           alpha, Hqp, fqp, Aeq, beq, Ain, bin,lb,ub] = atlasControllers.setupAndSolveQP(r, params, use_fastqp,...
                                              qddot_des, x, all_bodies_vdot,...
-                                             condof, supp, A_ls, B_ls, Qy,...
-                                             R_ls, C_ls, D_ls, S, s1,...
-                                             s1dot, s2dot, x0, u0, y0, ...
+                                             condof, supp, qp_input.zmp_data, ...
                                              qdd_lb, qdd_ub, w_qdd, ...
                                              mu, height,obj.use_bullet,...
                                              ctrl_data, obj.gurobi_options);
@@ -337,8 +304,7 @@ classdef AtlasPlanlessQPController
 
         if (obj.use_mex==1)
           [y,qdd,info_fqp,active_supports,alpha] = statelessQPControllermex(obj.mex_ptr.data,params,use_fastqp,qddot_des,x,...
-              all_bodies_vdot,condof,supp,A_ls,B_ls,Qy,R_ls,C_ls,D_ls,...
-              S,s1,s1dot,s2dot,x0,u0,y0,qdd_lb,qdd_ub,w_qdd,mu,height);
+              all_bodies_vdot,condof,available_supports,contact_sensor,struct(qp_input.zmp_data),qdd_lb,qdd_ub,w_qdd,mu,height);
 
           if info_fqp < 0
             ctrl_data.infocount = ctrl_data.infocount+1;
@@ -358,12 +324,11 @@ classdef AtlasPlanlessQPController
           [y_mex,mex_qdd,info_mex,active_supports_mex,~,Hqp_mex,fqp_mex,...
             Aeq_mex,beq_mex,Ain_mex,bin_mex,Qf,Qeps] = ...
             statelessQPControllermex(obj.mex_ptr.data,params,use_fastqp,qddot_des,x,...
-            all_bodies_vdot,condof,supp,A_ls,B_ls,Qy,R_ls,C_ls,D_ls,S,s1,...
-            s1dot,s2dot,x0,u0,y0,qdd_lb,qdd_ub,w_qdd,mu,height);
+            all_bodies_vdot,condof,available_supports,contact_sensor,struct(qp_input.zmp_data),qdd_lb,qdd_ub,w_qdd,mu,height);
 
-          num_active_contacts = zeros(1, length(supp.bodies));
-          for j = 1:length(supp.contact_pts)
-            num_active_contacts(j) = size(supp.contact_pts{j}, 2);
+          num_active_contacts = zeros(1, length(supp));
+          for j = 1:length(supp)
+            num_active_contacts(j) = size(supp(j).contact_pts, 2);
           end
           nc = sum(num_active_contacts);
           if (nc>0)
@@ -378,10 +343,10 @@ classdef AtlasPlanlessQPController
             Qf=Qf*2;
             Qeps=Qeps*2;
           end
-          valuecheck(Hqp,blkdiag(Hqp_mex,diag(Qf),diag(Qeps)),1e-6);
-          if (nc>0)
-            valuecheck(active_supports_mex,active_supports);
+          if ~valuecheck(Hqp,blkdiag(Hqp_mex,diag(Qf),diag(Qeps)),1e-6);
+            keyboard();
           end
+          valuecheck(Hqp,blkdiag(Hqp_mex,diag(Qf),diag(Qeps)),1e-6);
           valuecheck(fqp',fqp_mex,1e-6);
           if ~obj.use_bullet
             % contact jacobian rows can be permuted between matlab/mex when
@@ -437,12 +402,12 @@ classdef AtlasPlanlessQPController
               normals_identical = ~any(any(bsxfun(@minus, normalj, normalj(:,1))));
               if normals_identical % otherwise computing a COP doesn't make sense
                 normalj = normalj(:,1);
-                betaj = beta((j - 1) * nd + (1 : nd * supp.num_contact_pts(j)));
+                betaj = beta((j - 1) * nd + (1 : nd * supp(j).num_contact_pts));
                 contact_positionsj = r.getBody(active_supports(j)).getTerrainContactPoints();
                 forcej = zeros(3, 1);
                 torquej = zeros(3, 1);
                 min_contact_position_z = inf;
-                for k = 1 : supp.num_contact_pts(j)
+                for k = 1 : supp(j).num_contact_pts
                   Bjk = Bj{k};
                   betajk = betaj((k - 1) * nd + (1:nd));
                   contact_positionjk = contact_positionsj(:, k);
@@ -496,5 +461,6 @@ classdef AtlasPlanlessQPController
       tf = support_logic_map(2*logical(body_force_sensor) + logical(body_kin_sensor)+1);
     end
   end
-    
+  
+
 end

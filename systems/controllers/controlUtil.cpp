@@ -278,6 +278,118 @@ MatrixXd individualSupportCOPs(RigidBodyManipulator* r, const std::vector<Suppor
   return individual_cops;
 }
 
+std::vector<SupportStateElement> parseSupportData(const mxArray* supp_data) {
+  double *logic_map_double;
+  int nsupp = mxGetN(supp_data);
+  if (mxGetM(supp_data) != 1) {
+    mexErrMsgIdAndTxt("Drake:parseSupportData:BadInputs", "the support data should be a 1xN struct array");
+  }
+  int i, j;
+  MatrixXd contact_pts;
+  Vector4d contact_pt = Vector4d::Zero();
+  contact_pt(3) = 1.0;
+  int num_pts;
+  std::vector<SupportStateElement> supports;
+  const mxArray* pm;
+
+  for (i = 0; i < nsupp; i++) {
+    SupportStateElement se;
+
+    se.body_idx = ((int) mxGetScalar(mxGetField(supp_data, i, "body_id"))) - 1;
+
+    num_pts = mxGetN(mxGetField(supp_data, i, "contact_pts"));
+    pm = mxGetField(supp_data, i, "support_logic_map");
+    if (mxIsDouble(pm)) {
+      logic_map_double = mxGetPr(pm);
+      for (j = 0; j < 4; j++) {
+        se.support_logic_map[j] = logic_map_double[j] != 0;
+      }
+    } else {
+      mexErrMsgTxt("Please convert support_logic_map to double");
+    }
+    pm = mxGetField(supp_data, i, "contact_pts");
+    contact_pts.resize(mxGetM(pm), mxGetN(pm));
+    memcpy(contact_pts.data(), mxGetPr(pm), sizeof(double)*mxGetNumberOfElements(pm));
+
+    for (j = 0; j < num_pts; j++) {
+      contact_pt.head(3) = contact_pts.col(j);
+      se.contact_pts.push_back(contact_pt);
+    }
+    se.contact_surface = ((int) mxGetScalar(mxGetField(supp_data, i, "contact_surfaces"))) - 1;
+    supports.push_back(se);
+  }
+  return supports;
+}
+
+bool isSupportElementActive(SupportStateElement* se, bool contact_force_detected, bool kinematic_contact_detected) {
+  bool is_active;
+
+  // Implement the logic described in QPInput2D.m
+  if (!contact_force_detected && !kinematic_contact_detected) {
+    is_active = se->support_logic_map[0]; 
+  } else if (!contact_force_detected && kinematic_contact_detected) {
+    is_active = se->support_logic_map[1];
+  } else if (contact_force_detected && !kinematic_contact_detected) {
+    is_active = se->support_logic_map[2];
+  } else  { // (contact_force_detected && kinematic_contact_detected)
+    is_active = se->support_logic_map[3];
+  }
+  return is_active;
+}
+
+Matrix<bool, Dynamic, 1> getActiveSupportMask(RigidBodyManipulator* r, void* map_ptr, double* q, double* qd, std::vector<SupportStateElement> available_supports, Matrix<bool, Dynamic, 1> contact_force_detected, double contact_threshold, double terrain_height) {
+  r->doKinematics(q, false, qd);
+
+  int nsupp = available_supports.size();
+  Matrix<bool, Dynamic, 1> active_supp_mask = Matrix<bool, Dynamic, 1>::Zero(nsupp);
+  VectorXd phi;
+  SupportStateElement se;
+  bool needs_kin_check;
+  bool kin_contact;
+  bool force_contact;
+
+  for (int i = 0; i < nsupp; i++) {
+    se = available_supports[i];
+
+    force_contact = (contact_force_detected(se.body_idx) != 0);
+    // Determine if the body needs to be checked for kinematic contact. We only
+    // need to check for kin contact if the logic map indicates that the
+    // presence or absence of such contact would  affect the decision about
+    // whether to use that body as a support.
+    needs_kin_check = (((se.support_logic_map[1] != se.support_logic_map[0]) && (contact_force_detected(se.body_idx) == 0)) ||
+                       ((se.support_logic_map[3] != se.support_logic_map[2]) && (contact_force_detected(se.body_idx) == 1)));
+
+
+    if (needs_kin_check) {
+      if (contact_threshold == -1) {
+        kin_contact = true;
+      } else {
+        contactPhi(r,se,map_ptr,phi,terrain_height);
+        kin_contact = (phi.minCoeff()<=contact_threshold);
+      }
+    } else {
+      kin_contact = false; // we've determined already that kin contact doesn't matter for this support element
+    }
+
+    active_supp_mask(i) = isSupportElementActive(&se, force_contact, kin_contact);
+  }
+  return active_supp_mask;
+}
+
+std::vector<SupportStateElement> getActiveSupports(RigidBodyManipulator* r, void* map_ptr, double* q, double* qd, std::vector<SupportStateElement> available_supports, Matrix<bool, Dynamic, 1> contact_force_detected, double contact_threshold, double terrain_height) {
+
+  Matrix<bool, Dynamic, 1> active_supp_mask = getActiveSupportMask(r, map_ptr, q, qd, available_supports, contact_force_detected, contact_threshold, terrain_height);
+
+  std::vector<SupportStateElement> active_supports;
+
+  for (int i=0; i < available_supports.size(); i++) {
+    if (active_supp_mask(i)) {
+      active_supports.push_back(available_supports[i]);
+    }
+  }
+  return active_supports;
+}
+
 template drakeControlUtilEXPORT void getRows(std::set<int> &, const MatrixBase< MatrixXd > &, MatrixBase< MatrixXd > &);
 template drakeControlUtilEXPORT void getCols(std::set<int> &, const MatrixBase< MatrixXd > &, MatrixBase< MatrixXd > &);
 template drakeControlUtilEXPORT void angleDiff(const MatrixBase<MatrixXd> &, const MatrixBase<MatrixXd> &, MatrixBase<MatrixXd> &);

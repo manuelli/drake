@@ -70,15 +70,15 @@ import atlasControllers.*;
 
 param_sets = atlasParams.getDefaults(r);
 control = AtlasPlanlessQPController(r,...
-                                    fcompare(@statelessBodyMotionControl,@statelessBodyMotionControlmex),...
-                                    param_sets, struct('use_mex', 1));
-                                    % @statelessBodyMotionControlmex,...
+                                    @statelessBodyMotionControlmex,...
+                                    param_sets, struct('use_mex', 2));
+                                    % fcompare(@statelessBodyMotionControl,@statelessBodyMotionControlmex),...
 
 planeval = AtlasPlanEval(r, walking_plan_data);
 % plancontroller = AtlasSplitQPController(r, control, planeval);
+
 plan_node = AtlasSplitQPController(r, [], planeval);
 control_node = AtlasSplitQPController(r, control, []);
-
 plancontroller = cascade(plan_node, control_node);
 
 sys = feedback(r, plancontroller);

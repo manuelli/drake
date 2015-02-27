@@ -21,8 +21,8 @@ classdef AtlasSplitQPController < DrakeSystem
       obj.control = control;
       obj.plan_eval = plan_eval;
 
+      obj.lc = lcm.lcm.LCM.getSingleton();
       if isempty(obj.plan_eval) || isempty(obj.control)
-        obj.lc = lcm.lcm.LCM.getSingleton();
         if isempty(obj.plan_eval)
           obj.monitor = drake.util.MessageMonitor(drake.lcmt_qp_controller_input, 'timestamp');
           obj.lc.subscribe('QP_CONTROLLER_INPUT', obj.monitor);
@@ -31,33 +31,35 @@ classdef AtlasSplitQPController < DrakeSystem
     end
 
     function y = output(obj, t, ~, x)
-      t0 = tic();
       if ~isempty(obj.plan_eval)
+        t0 = tic();
         qp_input = obj.plan_eval.getQPControllerInput(t, x);
+        ptime = toc(t0);
+        fprintf(1, 'plan eval: %f, ', ptime);
       else
+        t0 = tic();
         qp_input = [];
         while isempty(qp_input)
           qp_input = obj.monitor.getMessage();
         end
         qp_input = drake.lcmt_qp_controller_input(qp_input);
+        lcm_time = toc(t0);
+        fprintf(1, 'lcm receive: %f, ', lcm_time);
       end
-      ptime = toc(t0);
 
-      t0 = tic();
-      if isempty(obj.control)
-        qp_input_msg = qp_input.to_lcm();
-      end
-      lcm_time = toc(t0);
-
-      t0 = tic();
       if ~isempty(obj.control)
+        t0 = tic();
         [y, v_ref] = obj.control.tick(t, x, qp_input, [-1;-1]);
+        ctime = toc(t0);
+        fprintf(1, 'control: %f\n', ctime);
       else
+        t0 = tic();
+        qp_input_msg = qp_input.to_lcm();
         obj.lc.publish('QP_CONTROLLER_INPUT', qp_input_msg);
+        lcm_time = toc(t0);
         y = x;
+        fprintf(1, 'lcm_serialize: %f, ', lcm_time);
       end
-      ctime = toc(t0);
-      fprintf(1, 'plan eval: %f, lcm serialize: %f, control: %f\n', ptime, lcm_time, ctime);
     end
   end
 end

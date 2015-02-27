@@ -22,14 +22,12 @@ using namespace std;
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
-  int error;
   if (nrhs<1) mexErrMsgTxt("usage: alpha=QPControllermex(ptr,params_obj...,...)");
   if (nlhs<1) mexErrMsgTxt("take at least one output... please.");
 
   struct QPControllerData* pdata;
   mxArray* pm;
   double* pr;
-  int i,j;
 
   // first get the ptr back from matlab
   if (!mxIsNumeric(prhs[0]) || mxGetNumberOfElements(prhs[0])!=1)
@@ -61,9 +59,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   pm = myGetProperty(pobj,"Kp_accel");
   pdata->Kp_accel = mxGetScalar(pm);
 
-  pm = mxGetField(myGetProperty(pobj,"whole_body"), 0, "w_qdd");
-  pdata->w_qdd.resize(nq);
-  memcpy(pdata->w_qdd.data(),mxGetPr(pm),sizeof(double)*nq);
+  double contact_threshold = mxGetScalar(myGetProperty(pobj,"contact_threshold"));
 
   const int dim = 3, // 3D
   nd = 2*m_surface_tangents; // for friction cone approx, hard coded for now
@@ -81,16 +77,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   pdata->n_body_accel_inputs = (int) mxGetN(acc_obj);
   pdata->n_body_accel_bounds = (int) mxGetN(acc_obj);
   pdata->body_accel_input_weights.resize(pdata->n_body_accel_inputs);
+  pdata->accel_bound_body_idx.resize(pdata->n_body_accel_inputs);
+  pdata->min_body_acceleration.resize(pdata->n_body_accel_inputs);
+  pdata->max_body_acceleration.resize(pdata->n_body_accel_inputs);
 
   vector<Vector6d,aligned_allocator<Vector6d>> body_accel_inputs;
   for (int i=0; i<pdata->n_body_accel_inputs; i++) {
-    pdata->accel_bound_body_idx.push_back((int) mxGetScalar(mxGetField(acc_obj, i, "body_id"))-1);
+    pdata->accel_bound_body_idx[i] = ((int) mxGetScalar(mxGetField(acc_obj, i, "body_id"))) - 1;
 
     body_accel_inputs.push_back(matlabToEigen<6, 1>(mxGetField(acc_obj, i, "body_vdot")));
     pm = mxGetField(mxGetField(acc_obj, i, "params"), 0, "accel_bounds");
-    pdata->min_body_acceleration.push_back(matlabToEigen<6, 1>(mxGetField(pm, 0, "min")));
-    pdata->max_body_acceleration.push_back(matlabToEigen<6, 1>(mxGetField(pm, 0, "max")));
-    pdata->body_accel_input_weights[i] = mxGetScalar(mxGetField(mxGetField(acc_obj, i, "params"), 0, "weight"));
+    pdata->min_body_acceleration[i] = matlabToEigen<6, 1>(mxGetField(pm, 0, "min"));
+    pdata->max_body_acceleration[i] = matlabToEigen<6, 1>(mxGetField(pm, 0, "max"));
+    pdata->body_accel_input_weights(i) = mxGetScalar(mxGetField(mxGetField(acc_obj, i, "params"), 0, "weight"));
   }
 
   pdata->n_body_accel_eq_constraints = 0;
@@ -114,22 +113,45 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
   int desired_support_argid = narg++;
 
-  Map<MatrixXd> A_ls(mxGetPr(prhs[narg]),mxGetM(prhs[narg]),mxGetN(prhs[narg])); narg++;
-  Map<MatrixXd> B_ls(mxGetPr(prhs[narg]),mxGetM(prhs[narg]),mxGetN(prhs[narg])); narg++;
-  Map<MatrixXd> Qy  (mxGetPr(prhs[narg]),mxGetM(prhs[narg]),mxGetN(prhs[narg])); narg++;
-  Map<MatrixXd> R_ls(mxGetPr(prhs[narg]),mxGetM(prhs[narg]),mxGetN(prhs[narg])); narg++;
-  Map<MatrixXd> C_ls(mxGetPr(prhs[narg]),mxGetM(prhs[narg]),mxGetN(prhs[narg])); narg++;
-  Map<MatrixXd> D_ls(mxGetPr(prhs[narg]),mxGetM(prhs[narg]),mxGetN(prhs[narg])); narg++;
-  Map<MatrixXd> S   (mxGetPr(prhs[narg]),mxGetM(prhs[narg]),mxGetN(prhs[narg])); narg++;
+  pobj = prhs[narg];
+  Map<VectorXd> contact_force_detected(mxGetPr(pobj), mxGetNumberOfElements(pobj), 1);
+  Matrix<bool, Dynamic, 1> b_contact_force = Matrix<bool, Dynamic, 1>::Zero(contact_force_detected.size());
+  for (int i=0; i < b_contact_force.size(); i++) {
+    b_contact_force(i) = (contact_force_detected(i) != 0);
+  }
+  narg++;
 
-  Map<VectorXd> s1(mxGetPr(prhs[narg]),mxGetM(prhs[narg])); narg++;
-  Map<VectorXd> s1dot(mxGetPr(prhs[narg]),mxGetM(prhs[narg])); narg++;
-  double s2dot = mxGetScalar(prhs[narg++]);
-  Map<VectorXd> x0(mxGetPr(prhs[narg]),mxGetM(prhs[narg])); narg++;
-  Map<VectorXd> u0(mxGetPr(prhs[narg]),mxGetM(prhs[narg])); narg++;
-  Map<VectorXd> y0(mxGetPr(prhs[narg]),mxGetM(prhs[narg])); narg++;
+  pobj = mxGetField(prhs[narg],0,"A");
+  Map<MatrixXd> A_ls(mxGetPr(pobj), mxGetM(pobj), mxGetN(pobj));
+  pobj = mxGetField(prhs[narg],0,"B");
+  Map<MatrixXd> B_ls(mxGetPr(pobj), mxGetM(pobj), mxGetN(pobj));
+  pobj = mxGetField(prhs[narg],0,"C");
+  Map<MatrixXd> C_ls(mxGetPr(pobj), mxGetM(pobj), mxGetN(pobj));
+  pobj = mxGetField(prhs[narg],0,"D");
+  Map<MatrixXd> D_ls(mxGetPr(pobj), mxGetM(pobj), mxGetN(pobj));
+  pobj = mxGetField(prhs[narg],0,"Qy");
+  Map<MatrixXd> Qy(mxGetPr(pobj), mxGetM(pobj), mxGetN(pobj));
+  pobj = mxGetField(prhs[narg],0,"R");
+  Map<MatrixXd> R_ls(mxGetPr(pobj), mxGetM(pobj), mxGetN(pobj));
+  pobj = mxGetField(prhs[narg],0,"S");
+  Map<MatrixXd> S(mxGetPr(pobj), mxGetM(pobj), mxGetN(pobj));
+  pobj = mxGetField(prhs[narg],0,"s1");
+  Map<MatrixXd> s1(mxGetPr(pobj), mxGetM(pobj), mxGetN(pobj));
+  pobj = mxGetField(prhs[narg],0,"s1dot");
+  Map<MatrixXd> s1dot(mxGetPr(pobj), mxGetM(pobj), mxGetN(pobj));
+  pobj = mxGetField(prhs[narg],0,"s2dot");
+  double s2dot = mxGetScalar(pobj);
+  pobj = mxGetField(prhs[narg],0,"x0");
+  Map<MatrixXd> x0(mxGetPr(pobj), mxGetM(pobj), mxGetN(pobj));
+  pobj = mxGetField(prhs[narg],0,"u0");
+  Map<MatrixXd> u0(mxGetPr(pobj), mxGetM(pobj), mxGetN(pobj));
+  pobj = mxGetField(prhs[narg],0,"y0");
+  Map<MatrixXd> y0(mxGetPr(pobj), mxGetM(pobj), mxGetN(pobj));
+  narg++;
+
   Map<VectorXd> qdd_lb(mxGetPr(prhs[narg]),mxGetM(prhs[narg])); narg++;
   Map<VectorXd> qdd_ub(mxGetPr(prhs[narg]),mxGetM(prhs[narg])); narg++;
+  pdata->w_qdd.resize(nq);
   memcpy(pdata->w_qdd.data(),mxGetPr(prhs[narg++]),sizeof(double)*nq); 
   
   double mu = mxGetScalar(prhs[narg++]);
@@ -140,47 +162,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   pdata->r->doKinematics(q,false,qd);
 
   //---------------------------------------------------------------------
-  // Compute active support from desired supports -----------------------
-  MatrixXd all_body_contact_pts;
-  Vector4d contact_pt = Vector4d::Zero();
-  contact_pt(3) = 1.0;
 
-  vector<SupportStateElement> active_supports;
-  set<int> contact_bodies; // redundant, clean up later
   int num_active_contact_pts=0;
-  if (!mxIsEmpty(prhs[desired_support_argid])) {
-    VectorXd phi;
-    mxArray* mxBodies = myGetField(prhs[desired_support_argid],"bodies");
-    if (!mxBodies) mexErrMsgTxt("couldn't get bodies");
-    double* pBodies = mxGetPr(mxBodies);
-    mxArray* mxContactPts = myGetField(prhs[desired_support_argid],"contact_pts");
-    if (!mxContactPts) mexErrMsgTxt("couldn't get contact points");
-    mxArray* mxContactSurfaces = myGetField(prhs[desired_support_argid],"contact_surfaces");
-    if (!mxContactSurfaces) mexErrMsgTxt("couldn't get contact surfaces");
-    double* pContactSurfaces = mxGetPr(mxContactSurfaces);
-    
-    for (i=0; i<mxGetNumberOfElements(mxBodies);i++) {
-      mxArray* mxBodyContactPts = mxGetCell(mxContactPts,i);
-      assert(mxGetM(mxBodyContactPts) == 3);
-      int nc = static_cast<int>(mxGetN(mxBodyContactPts));
-      if (nc<1) continue;
-      
-      all_body_contact_pts.resize(mxGetM(mxBodyContactPts),mxGetN(mxBodyContactPts));
-      pr = mxGetPr(mxBodyContactPts); 
-      memcpy(all_body_contact_pts.data(),pr,sizeof(double)*mxGetM(mxBodyContactPts)*mxGetN(mxBodyContactPts));
+  vector<SupportStateElement> available_supports = parseSupportData(prhs[desired_support_argid]);
+  vector<SupportStateElement> active_supports = getActiveSupports(pdata->r, pdata->map_ptr, q, qd, available_supports, b_contact_force, contact_threshold, terrain_height);
 
-      SupportStateElement se;
-      se.body_idx = (int) pBodies[i]-1;
-      for (j=0; j<nc; j++) {
-        contact_pt.head(3) = all_body_contact_pts.col(j);
-        se.contact_pts.push_back(contact_pt);
-      }
-      se.contact_surface = (int) pContactSurfaces[i]-1;
-      
-      active_supports.push_back(se);
-      num_active_contact_pts += nc;
-      contact_bodies.insert((int)se.body_idx); 
-    }
+  for (vector<SupportStateElement>::iterator iter = active_supports.begin(); iter!=active_supports.end(); iter++) {
+    num_active_contact_pts += iter->contact_pts.size();
   }
 
   pdata->r->HandC(q,qd,(MatrixXd*)NULL,pdata->H,pdata->C,(MatrixXd*)NULL,(MatrixXd*)NULL,(MatrixXd*)NULL);
