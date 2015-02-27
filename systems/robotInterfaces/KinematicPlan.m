@@ -81,8 +81,10 @@ classdef KinematicPlan < QPControllerPlan
 
     function qp_input = getQPControllerInput(obj,t_global,x)
       import atlasControllers.*
-      % convert global time to plan time
-      t = t_global - obj.start_time;
+      % convert global time to plan time, obj.qtraj.tspan(1) is the start of the plan
+      % in plan time, and t_global - obj.start_time is the time elapsed since the plan
+      % started running on the robot
+      t = obj.qtraj.tspan(1) + (t_global - obj.start_time);
       qp_input = QPInput3D();
       qp_input = obj.setSupportData(t,x,qp_input);
       %qp_input = obj.setDefaultCosts(qp_input);
