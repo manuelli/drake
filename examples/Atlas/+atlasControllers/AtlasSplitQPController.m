@@ -71,7 +71,7 @@ classdef AtlasSplitQPController < DrakeSystem
         fprintf(1, 'control: %f\n', ctime);
       else
         t0 = tic();
-        encodeQPInputLCMMex(qp_input);
+        % encodeQPInputLCMMex(qp_input);
         qp_input_msg = qp_input.to_lcm();
         obj.lc.publish('QP_CONTROLLER_INPUT_DEBUG', qp_input_msg);
         lcm_time = toc(t0);

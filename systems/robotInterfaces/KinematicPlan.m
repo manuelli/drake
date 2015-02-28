@@ -79,17 +79,27 @@ classdef KinematicPlan < QPControllerPlan
 
     end
 
-    function qp_input = getQPControllerInput(obj,t_global,x)
+    function qp_input = getQPControllerInput(obj,t_global,x,robot_property_cache)
       import atlasControllers.*
       % convert global time to plan time, obj.qtraj.tspan(1) is the start of the plan
       % in plan time, and t_global - obj.start_time is the time elapsed since the plan
       % started running on the robot
       t = obj.qtraj.tspan(1) + (t_global - obj.start_time);
-      qp_input = QPInput3D();
+      qp_input = QPInput2D();
+      qp_input = obj.setZMPCostToZero(qp_input);
       qp_input = obj.setSupportData(t,x,qp_input);
+      qp_input.whole_body_data.q_des = obj.qtraj.eval(t);
+
+      % this is actually doing nothing
+      qp_input.body_motion_data = struct('body_id',{5},'ts',{[0;0]},'coefs',zeros(6,1,4));
       %qp_input = obj.setDefaultCosts(qp_input);
 
       % not sure what support_data.param_set_name should be, by default it is set to 'walking'
+    end
+
+    % sets zmp cost to zero so that we are essentially not passing this in as a cost to the QPController
+    function qp_input = setZMPCostToZero(obj,qp_input)
+      qp_input.zmp_data.Qy = zeros(size(qp_input.zmp_data.Qy));
     end
 
     % Implements three types of support logic depending on whether it is active in the plan, whether it is just 
@@ -98,7 +108,7 @@ classdef KinematicPlan < QPControllerPlan
       % this t is already in plan time
 
       support_data = qp_input.support_data;
-      I = find(obj.support_times < t);
+      I = find(obj.support_times <= t);
       idx = I(end);
       supp = obj.supports{idx}; % supports plan thinks are active
 

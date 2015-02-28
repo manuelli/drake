@@ -24,8 +24,7 @@ if ~isfield(example_options,'terrain'), example_options.terrain = RigidBodyFlatT
 warning('off','Drake:RigidBodyManipulator:UnsupportedContactPoints')
 warning('off','Drake:RigidBodyManipulator:UnsupportedVelocityLimits')
 
-path_string = []
-path_handle = addpathTemporary([getenv('DRC_BASE'),'/software/control/matlab/planners/prone'])
+path_handle = addpathTemporary([getenv('DRC_BASE'),'/software/control/matlab/planners/prone']);
 
 % construct robot model
 options.floating = true;
@@ -53,7 +52,7 @@ kinematic_plan_data = plan_data{1};
 kinematic_plan_data.c_pts = kpt.c;
 kinematic_plan_data.linkId = kpt.linkId;
 
-qstar = kinematic_plan_data.qtraj.eval(qtraj.tspan(1));
+qstar = kinematic_plan_data.qtraj.eval(kinematic_plan_data.qtraj.tspan(1));
 xstar = [qstar;0*qstar]; % want the robot to start with zero velocity
 r = r.setInitialState(xstar);
 
@@ -98,9 +97,10 @@ kinematic_plan = KinematicPlan(kinematic_plan_data);
 planeval = AtlasPlanEval(r, kinematic_plan);
 % plancontroller = AtlasSplitQPController(r, control, planeval);
 
-plan_node = AtlasSplitQPController(r, [], planeval);
-control_node = AtlasSplitQPController(r, control, []);
-plancontroller = cascade(plan_node, control_node);
+% plan_node = AtlasSplitQPController(r, [], planeval);
+% control_node = AtlasSplitQPController(r, control, []);
+% plancontroller = cascade(plan_node, control_node);
+plancontroller = AtlasSplitQPController(r,control,planeval);
 
 sys = feedback(r, plancontroller);
 output_select(1).system=1;
