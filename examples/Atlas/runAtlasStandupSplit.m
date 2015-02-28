@@ -41,12 +41,13 @@ r = Atlas(atlas_urdf,options);
 kpt = KinematicPoseTrajectory(r,{});
 r = kpt.addSpecifiedCollisionGeometryToRobot({'l_toe','l_knee','l_hand','r_toe','r_knee','r_hand'});
 r = r.removeCollisionGroupsExcept({'l_toe','l_knee','l_hand','r_toe','r_knee','r_hand'});
+r = kpt.addVisualContactPoints(r);
 r = compile(r);
 
 % the variable should be called plan_data, cell array of structs
 load('data_one_knee_plan')
 % should already have the fields, supports, support_times and qtraj
-kinematic_plan_data = plan_data{1};
+kinematic_plan_data = plan_data{2};
 
 % populate the remaining fields
 kinematic_plan_data.c_pts = kpt.c;

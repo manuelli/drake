@@ -91,10 +91,11 @@ classdef KinematicPlan < QPControllerPlan
       qp_input.whole_body_data.q_des = obj.qtraj.eval(t);
 
       % this is actually doing nothing
-      qp_input.body_motion_data = struct('body_id',{5},'ts',{[0;0]},'coefs',zeros(6,1,4));
+      qp_input.body_motion_data = struct('body_id',{5},'ts',{[0,0]},'coefs',zeros(6,1,4));
       %qp_input = obj.setDefaultCosts(qp_input);
 
-      % not sure what support_data.param_set_name should be, by default it is set to 'walking'
+      % use the 'kinematic' parameters, it is set to walking by default
+      qp_input.param_set_name = 'kinematic';
     end
 
     % sets zmp cost to zero so that we are essentially not passing this in as a cost to the QPController
