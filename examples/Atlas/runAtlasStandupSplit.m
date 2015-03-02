@@ -5,7 +5,7 @@ function runAtlasStandupSplit(example_options)
 % @option use_bullet
 % @option use_angular_momentum
 % @options navgoal
-% 
+%
 
 checkDependency('gurobi');
 checkDependency('lcmgl');
@@ -13,12 +13,14 @@ checkDependency('lcmgl');
 if nargin<1, example_options=struct(); end
 
 % force the use of the new torque limits for v4/v5
-example_options.use_new_torque_limits = 1;
+example_options.use_new_torque_limits = 0;
+
+
 if ~isfield(example_options,'use_mex'), example_options.use_mex = true; end
 if ~isfield(example_options,'use_bullet') example_options.use_bullet = false; end
 if ~isfield(example_options,'use_angular_momentum') example_options.use_angular_momentum = false; end
 if ~isfield(example_options,'navgoal')
-%  navgoal = [2*rand();0.25*randn();0;0;0;0];
+  %  navgoal = [2*rand();0.25*randn();0;0;0;0];
   example_options.navgoal = [0.2;0;0;0;0;0];
 end
 if ~isfield(example_options,'terrain'), example_options.terrain = RigidBodyFlatTerrain; end
@@ -42,8 +44,8 @@ r = Atlas(atlas_urdf,options);
 
 % this sets up exactly the collision geometries that we want on the robot
 kpt = KinematicPoseTrajectory(r,{});
-r = kpt.addSpecifiedCollisionGeometryToRobot({'l_toe','l_knee','l_hand','r_toe','r_knee','r_hand'});
-r = r.removeCollisionGroupsExcept({'l_toe','l_knee','l_hand','r_toe','r_knee','r_hand'});
+r = kpt.addSpecifiedCollisionGeometryToRobot({'l_toe','l_knee','l_hand','r_toe','r_knee','r_hand','r_heel'});
+r = r.removeCollisionGroupsExcept({'l_toe','l_knee','l_hand','r_toe','r_knee','r_hand','r_heel'});
 r = kpt.addVisualContactPoints(r);
 r = compile(r);
 
@@ -59,7 +61,7 @@ end
 % the variable should be called plan_data, cell array of structs
 load('data_one_knee_plan')
 % should already have the fields, supports, support_times and qtraj
-kinematic_plan_data = plan_data{1};
+kinematic_plan_data = plan_data{2};
 
 % populate the remaining fields
 kinematic_plan_data.c_pts = kpt.c;
@@ -102,9 +104,8 @@ import atlasControllers.*;
 
 param_sets = atlasParams.getDefaults(r);
 control = AtlasPlanlessQPController(r,...
-                                    @statelessBodyMotionControlmex,...
-                                    param_sets, struct('use_mex', 2));
-                                    % fcompare(@statelessBodyMotionControl,@statelessBodyMotionControlmex),...
+  param_sets, struct('use_mex', 1));
+% fcompare(@statelessBodyMotionControl,@statelessBodyMotionControlmex),...
 
 kinematic_plan = KinematicPlan(kinematic_plan_data);
 planeval = AtlasPlanEval(r, kinematic_plan);
@@ -116,22 +117,28 @@ planeval = AtlasPlanEval(r, kinematic_plan);
 plancontroller = AtlasSplitQPController(r,control,planeval);
 
 sys = feedback(r, plancontroller);
-output_select(1).system=1;
-output_select(1).output=1;
-sys = mimoCascade(sys,v,[],[],output_select);
 
+visualize = 1;
+if visualize
+  output_select(1).system=1;
+  output_select(1).output=1;
+  sys = mimoCascade(sys,v,[],[],output_select);
+end
+
+t0 = 0;
 % simulate almost the entire length of time
 T = kinematic_plan.duration-0.001;
-T = 7;
-
-% t0 = 0;
-% tf = 1;
-% q0 = kinematic_plan.qtraj.eval(t0);
-% x0 = [q0;0*q0];
+t0 = kinematic_plan.support_times(1);
+q0 = kinematic_plan.qtraj.eval(t0);
+x0 = [q0;0*qstar]
+tf = T;
+% 
 
 % profile on
-ytraj = simulate(sys, [0, T], x0, struct('gui_control_interface', true));
+ytraj = simulate(sys, [t0, T], x0, struct('gui_control_interface', true));
 % profile viewer
 
 v.playback(ytraj, struct('slider', true));
+t =0;
+
 

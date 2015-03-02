@@ -31,7 +31,8 @@ prop_cache.nq = r.getNumPositions();
 prop_cache.nv = r.getNumVelocities();
 prop_cache.num_bodies = length(r.getManipulator().body);
 
-for b = {'pelvis', 'r_foot', 'l_foot'}
+for b = {'pelvis', 'r_foot', 'l_foot','r_hand','l_hand','r_lleg'...
+  'l_lleg','utorso','r_uleg','l_uleg'}
   prop_cache.body_ids.(b{1}) = r.findLinkId(b{1});
 end
 

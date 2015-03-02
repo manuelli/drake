@@ -5,7 +5,7 @@ classdef KinematicPlan < QPControllerPlan
     support_times;
     support_names; % cell array of all supports used in the plan
     c_pts;
-    linkId;
+    linkName;
     qtraj;
     support_logic_type;
     breaking_contact_time_threshold = 0.5;
@@ -22,7 +22,7 @@ classdef KinematicPlan < QPControllerPlan
       obj = obj.initializeSupports(support_data);
       obj.support_times = data.support_times;
       obj.c_pts = data.c_pts;
-      obj.linkId = data.linkId;
+      obj.linkName = data.linkName; % stores the name
       obj.qtraj = data.qtraj;
       obj.duration = obj.qtraj.tspan(2) - obj.qtraj.tspan(1);
 
@@ -87,11 +87,11 @@ classdef KinematicPlan < QPControllerPlan
       t = obj.qtraj.tspan(1) + (t_global - obj.start_time);
       qp_input = QPInput2D();
       qp_input = obj.setZMPCostToZero(qp_input);
-      qp_input = obj.setSupportData(t,x,qp_input);
+      qp_input = obj.setSupportData(t,x,qp_input, robot_property_cache);
       qp_input.whole_body_data.q_des = obj.qtraj.eval(t);
 
-      % this is actually doing nothing
-      qp_input.body_motion_data = struct('body_id',{5},'ts',{[0,0]},'coefs',zeros(6,1,4));
+      % this is actually doing nothing, robin says I don't need this anymore
+      % qp_input.body_motion_data = struct('body_id',{5},'ts',{[0,0]},'coefs',zeros(6,1,4));
       %qp_input = obj.setDefaultCosts(qp_input);
 
       % use the 'kinematic' parameters, it is set to walking by default
@@ -105,9 +105,9 @@ classdef KinematicPlan < QPControllerPlan
 
     % Implements three types of support logic depending on whether it is active in the plan, whether it is just 
     % breaking support, or any remaining situation
-    function qp_input = setSupportData(obj,t,x,qp_input)
+    function qp_input = setSupportData(obj,t,x,qp_input,robot_property_cache)
       % this t is already in plan time
-
+      body_ids = robot_property_cache.body_ids; % a struct that caches the body ids
       support_data = qp_input.support_data;
       I = find(obj.support_times <= t);
       idx = I(end);
@@ -117,7 +117,8 @@ classdef KinematicPlan < QPControllerPlan
       % obj.support_names is exactly keys(supp)
       for j = 1:numel(obj.support_names)
         name = obj.support_names{j};
-        support_data(j).body_id = obj.linkId(name);
+        link_name = obj.linkName(name);
+        support_data(j).body_id = body_ids.(link_name);
         support_data(j).contact_pts = obj.c_pts(name);
         support_data(j).mu = 1;
         support_data(j).contact_surfaces = 0;
