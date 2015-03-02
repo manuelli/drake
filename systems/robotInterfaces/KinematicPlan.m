@@ -8,7 +8,7 @@ classdef KinematicPlan < QPControllerPlan
     linkId;
     qtraj;
     support_logic_type;
-    breaking_contact_time_threshold = 0.25;
+    breaking_contact_time_threshold = 0.5;
   end
 
   methods

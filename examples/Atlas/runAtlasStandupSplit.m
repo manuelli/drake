@@ -1,4 +1,4 @@
-function runAtlasWalking(example_options)
+function runAtlasStandupSplit(example_options)
 % Example of QPController for standing up with a kinematic plan
 %
 % @option use_mex
@@ -11,6 +11,9 @@ checkDependency('gurobi');
 checkDependency('lcmgl');
 
 if nargin<1, example_options=struct(); end
+
+% force the use of the new torque limits for v4/v5
+example_options.use_new_torque_limits = 1;
 if ~isfield(example_options,'use_mex'), example_options.use_mex = true; end
 if ~isfield(example_options,'use_bullet') example_options.use_bullet = false; end
 if ~isfield(example_options,'use_angular_momentum') example_options.use_angular_momentum = false; end
@@ -44,10 +47,19 @@ r = r.removeCollisionGroupsExcept({'l_toe','l_knee','l_hand','r_toe','r_knee','r
 r = kpt.addVisualContactPoints(r);
 r = compile(r);
 
+
+% adjust the torque limits
+if example_options.use_new_torque_limits
+  tau = 2400/3000;
+  r = r.setInputLimits(tau*r.umin,tau*r.umax);
+  r = compile(r);
+end
+
+
 % the variable should be called plan_data, cell array of structs
 load('data_one_knee_plan')
 % should already have the fields, supports, support_times and qtraj
-kinematic_plan_data = plan_data{2};
+kinematic_plan_data = plan_data{1};
 
 % populate the remaining fields
 kinematic_plan_data.c_pts = kpt.c;
@@ -110,6 +122,12 @@ sys = mimoCascade(sys,v,[],[],output_select);
 
 % simulate almost the entire length of time
 T = kinematic_plan.duration-0.001;
+T = 7;
+
+% t0 = 0;
+% tf = 1;
+% q0 = kinematic_plan.qtraj.eval(t0);
+% x0 = [q0;0*q0];
 
 % profile on
 ytraj = simulate(sys, [0, T], x0, struct('gui_control_interface', true));
