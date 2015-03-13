@@ -54,7 +54,14 @@ classdef QPInputConstantHeight
       
       obj.body_motion_data = struct('body_id', {},... % 3 d
                             'ts', {},... % 6 d
-                            'coefs', {}); % 4 * 6 * 3 d
+                            'coefs', {}, ... % 6 x 1 x 4
+                            'pt',{},... % (optional) default [0;0;0], the points on the body where the acceleration is computed
+                            'pid_frame',{}); % (optional) default is {}, QPController defaults to standard Kp,Kd and world frame
+                                            % should be a struct with fields 'Kp' 6 x 1 proportional gain in specified pd_frame
+                                            % 'Kd' also 6 x 1
+                                            %  'Ki' also 6 x 1
+                                            % frame_type string specifying 'cylindrical' or 'cartesian'
+                                            % homogeneous_transform
       obj.whole_body_data = struct('q_des', [],... % 34 d
                                'constrained_dofs', []); % 34 b
       obj.param_set_name = 'walking';
