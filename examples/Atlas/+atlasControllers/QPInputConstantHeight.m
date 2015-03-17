@@ -54,17 +54,20 @@ classdef QPInputConstantHeight
       
       obj.body_motion_data = struct('body_id', {},... % 3 d
                             'ts', {},... % 6 d
-                            'coefs', {}, ... % 6 x 1 x 4
-                            'pt',{},... % (optional) default [0;0;0], the points on the body where the acceleration is computed
-                            'pid_frame',{}); % (optional) default is {}, QPController defaults to standard Kp,Kd and world frame
-                                            % should be a struct with fields 'Kp' 6 x 1 proportional gain in specified pd_frame
-                                            % 'Kd' also 6 x 1
-                                            %  'Ki' also 6 x 1
-                                            % frame_type string specifying 'cylindrical' or 'cartesian'
-                                            % homogeneous_transform
+                            'coefs', {}); % 6 x 1 x 4 
       obj.whole_body_data = struct('q_des', [],... % 34 d
                                'constrained_dofs', []); % 34 b
       obj.param_set_name = 'walking';
+
+      obj.compliant_data = struct('body_id',{},... % the body_id of the body in question
+                                  'pt',{},... % the point on the body 3 x 1
+                                  'Kp',{},... % the proportional gain in the compliant coordinates
+                                  'Kd',{},....% the derivative gain in the compliant coordinates
+                                  'position',{},... % position of the spring-damper point in the compliant frame
+                                  'velocity',{},... % the velocity of the spring-damper point in compliant frame
+                                  'homogeneous_transform',{},... % homogeneous transform that defines the compliant frame along with frame type
+                                  'frame_type',{}); % can either be 'cylindrical' or 'cartesian'
+  
     end
 
     function msg = to_lcm(obj)
