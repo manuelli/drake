@@ -529,13 +529,17 @@ classdef QPLocomotionPlan < QPControllerPlan
       options = applyDefaults(options, struct('bodies_to_track', [biped.findLinkId('pelvis'),...
                                                                   biped.foot_body_id.right,...
                                                                   biped.foot_body_id.left]));
-
       q0 = qtraj.eval(qtraj.tspan(1));
       x0 = [q0; zeros(biped.getNumVelocities(), 1)];
       obj = QPLocomotionPlan.from_standing_state(x0, biped);
       obj.qtraj = qtraj;
       obj.duration = obj.qtraj.tspan(end) - obj.qtraj.tspan(1);
       obj.support_times = [obj.qtraj.tspan(1); inf];
+
+      if isfield(options,'supports') && isfield(options,'support_times')
+        obj.supports = options.supports;
+        obj.support_times = options.support_times;
+      end
 
       ts = qtraj.getBreaks();
       body_poses = zeros([6, length(ts), length(options.bodies_to_track)]);
