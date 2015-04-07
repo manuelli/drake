@@ -239,7 +239,6 @@ classdef QPLocomotionPlan < QPControllerPlan
       end
       %disp('plan shift: ')
       %obj.plan_shift_data.plan_shift
-      keyboard;
     end
 
     function qp_input = applyPlanShift(obj, qp_input)
