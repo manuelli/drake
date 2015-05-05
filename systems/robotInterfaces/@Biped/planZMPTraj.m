@@ -44,7 +44,7 @@ end
 steps.right = footsteps_with_quat([footsteps_with_quat.frame_id] == biped.foot_frame_id.right);
 steps.left = footsteps_with_quat([footsteps_with_quat.frame_id] == biped.foot_frame_id.left);
 
-[zmp0, supp0] = getZMPBetweenFeet(biped, struct('right', steps.right(1), 'left', steps.left(1)));
+[~, supp0] = getZMPBetweenFeet(biped, struct('right', steps.right(1), 'left', steps.left(1)));
 
 % start zmp at current COM position
 zmp0 = com0(1:2);
