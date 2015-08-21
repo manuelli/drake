@@ -10,6 +10,7 @@ lcmtypes_build(LCM_TYPES
 			 lcmt_simulation_command.lcm
 			 lcmt_zmp_data.lcm
 			 lcmt_qp_controller_input.lcm
+			 lcmt_qp_controller_state.lcm
 			 lcmt_support_data.lcm
 			 lcmt_foot_flag.lcm
 			 lcmt_joint_pd_override.lcm
