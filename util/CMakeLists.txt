@@ -16,8 +16,8 @@ if (LCM_FOUND AND MATLAB_FOUND)
 endif()
 
 
-add_library(drakeUtil SHARED drakeUtil.cpp)
-pods_install_headers(drakeUtil.h  DESTINATION drake)
+add_library(drakeUtil SHARED drakeUtil.cpp edgeDetector.cpp)
+pods_install_headers(drakeUtil.h edgeDetector.h DESTINATION drake)
 pods_install_libraries(drakeUtil)
 pods_install_pkg_config_file(drake-util
   LIBS -ldrakeUtil
