@@ -240,7 +240,7 @@ classdef QPLocomotionPlanSettings
         obj.V.S = fasteval(obj.V.S, 0);
       end
       obj.gain_set = 'walking';
-      obj.use_plan_shift = true;
+      obj.use_plan_shift = false;
     end
 
     function obj = fromQuasistaticQTraj(biped, qtraj, options)
