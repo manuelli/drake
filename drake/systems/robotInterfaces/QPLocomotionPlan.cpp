@@ -11,6 +11,7 @@
 #include <string>
 #include "convexHull.h"
 #include "atlasUtil.h"
+#include "ForceTorqueMeasurement.h"
 
 // TODO: discuss possibility of chatter in knee control
 // TODO: make body_motions a map from RigidBody* to BodyMotionData, remove body_id from BodyMotionData?
@@ -363,6 +364,23 @@ void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const sh
     if (!side_it->second){
       continue;
     }
+
+    ForceTorqueMeasurement ft;
+    Side side = side_it->first;
+    ft.frame_idx = this->foot_body_ids.at(side);
+    ft.wrench = Matrix<double,6,1>::Zero();
+    if (side == Side(LEFT)){
+      ft.wrench(1,1) robot_state.force_torque.l_foot_torque_x;
+      ft.wrench(2,1) robot_state.force_torque.l_foot_torque_y;
+      ft.wrench(6,1) robot_state.force_torque.l_foot_force_z;
+    }
+    else{
+      ft.wrench(1,1) robot_state.force_torque.r_foot_torque_x;
+      ft.wrench(2,1) robot_state.force_torque.r_foot_torque_y;
+      ft.wrench(6,1) robot_state.force_torque.r_foot_force_z;
+    }
+
+    // get the frame corresponding to the ankle
   }
 
 }
