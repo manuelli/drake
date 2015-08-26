@@ -361,6 +361,8 @@ void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const sh
   // need to transform foot contact points to foot frame
   auto side_it = active.begin();
   for(; side_it != active.end(); side_it++){
+
+    // if we didn't pre-approve this side then skip this iteration of the loop
     if (!side_it->second){
       continue;
     }
@@ -380,7 +382,39 @@ void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const sh
       ft.wrench(6,1) robot_state.force_torque.r_foot_force_z;
     }
 
-    // get the frame corresponding to the ankle
+    // require at least ankle_pd_force_threshold to do the ankle PD. Currently set at 200 Newtons
+    if (ft.wrench(6,1) < this->ankle_pd_force_threshold){
+      continue;
+    }
+
+    // compute COP
+
+    // first need to compute foot normal in world frame
+    Matrix<double,3,2> pts_foot_frame << 0, 0,
+                                     0, 0,
+                                     0, 1;
+
+    GradientVar<double, 3, 2> gv = robot.forwardKin(pts_foot_frame, foot_body_ids.at(side), 0, 0);
+    
+    Matrix<double,3,2> pts_world_frame = gv.value();
+    Vector3d normal_world_frame = pts_world_frame.cols(1) - pts_world_frame.cols(0);
+
+
+    Matrix<double,3,4> foot_contact_pts_world_frame = robot.forwardKin(foot_contact_pts, foot_body_ids.at(side), 0, 0).value();
+
+    Vector3d point_on_contact_plane = foot_contact_pts_world_frame.rowwise().mean();
+
+    std::vector<ForceTorqueMeasurement> ft_vector;
+    ft_vector.push_back(ft);
+
+    Vector3d cop_world_frame = robot.resolveCenterOfPressure(ft_vector, normal_world_frame, point_on_contact_plane).first()
+    Vector3d cop_foot_frame = robot.forwardKin(cop_world_frame, 0, foot_body_ids.at(side), 0, 0).value();
+
+
+
+
+
+     
   }
 
 }
@@ -783,11 +817,17 @@ const std::map<Side, int> QPLocomotionPlan::createJointIndicesMap(RigidBodyManip
 
 const Matrix<double, 4, 3> createDefaultFootContactPoints(){
 
-  Matrix<double, 4, 3> contact_pts;
-  contact_pts << 0.17, 0.0562, 0.0,
-                 0.17, -0.0562, 0.0,
-                 -0.13, -0.0562, 0.0,
-                 -0.13, 0.0562, 0.0;
+  Matrix<double, 3, 4> contact_pts;
+
+  contact_pts << 0.17, 0.17, -0.13, -0.13,
+                 0.0562, -0.0562, -0.0562, 0.0562,
+                 0.0, 0.0, 0.0, 0.0;
+
+
+  // contact_pts << 0.17, 0.0562, 0.0,
+  //                0.17, -0.0562, 0.0,
+  //                -0.13, -0.0562, 0.0,
+  //                -0.13, 0.0562, 0.0;
 
   return contact_pts;
 }
