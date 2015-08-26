@@ -1,0 +1,11 @@
+package drake;
+
+struct lcmt_qp_controller_state
+{
+  int64_t timestamp;
+  int32_t num_joints;
+
+  float q_integrator_state[num_joints];
+  float vref_integrator_state[num_joints];
+}
+
