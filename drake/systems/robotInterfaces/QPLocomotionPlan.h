@@ -10,6 +10,7 @@
 #include "ExponentialPlusPiecewisePolynomial.h"
 #include "RigidBodyManipulator.h"
 #include "lcmtypes/drake/lcmt_qp_controller_input.hpp"
+#include "lcmtypes/drc/robot_state_t.hpp"
 #include "BodyMotionData.h"
 #include "Side.h"
 #include <lcm/lcm-cpp.hpp>
@@ -159,11 +160,14 @@ private:
   const std::map<Side, int> aky_indices;
   const std::map<Side, int> akx_indices;
   const int pelvis_id;
+  const Matrix<double,3,4> foot_contact_pts;
 
   lcm::LCM lcm;
   std::string lcm_channel;
 
   double start_time;
+  double ankle_pd_override_active_time = 0.5; // time during which ankle_pd_override can be active after making contact
+  double ankle_pd_force_threshold = 200; // force threshold in Newtons
   Vector3d plan_shift;
   std::map<Side,Vector3d> foot_shifts;
   double last_foot_shift_time;
@@ -190,7 +194,7 @@ public:
    * @param contact_force_detected num_bodies vector indicating whether contact force
    */
   template <typename DerivedQ, typename DerivedV>
-  drake::lcmt_qp_controller_input createQPControllerInput(double t_global, const Eigen::MatrixBase<DerivedQ>& q, const Eigen::MatrixBase<DerivedV>& v, const std::vector<bool>& contact_force_detected);
+  drake::lcmt_qp_controller_input createQPControllerInput(double t_global, const Eigen::MatrixBase<DerivedQ>& q, const Eigen::MatrixBase<DerivedV>& v, const std::vector<bool>& contact_force_detected, const std::shared_ptr<drc::robot_state_t> robot_state);
 
   void setDuration(double duration);
 
@@ -229,11 +233,15 @@ private:
 
   void applyKneePD(Side side, drake::lcmt_qp_controller_input &qp_input);
 
+  void applyAnklePD(const std::map<Side, bool>& active, const std::shared_ptr<drc::robot_state_t> robot_state, drake::lcmt_qp_controller_input &qp_input);
+
   static const std::map<SupportLogicType, std::vector<bool> > createSupportLogicMaps();
 
   static const std::map<Side, int> createFootBodyIdMap(RigidBodyManipulator& robot, const std::map<Side, std::string>& foot_names);
 
   static const std::map<Side, int> createJointIndicesMap(RigidBodyManipulator& robot, const std::map<Side, std::string>& foot_body_ids);
+
+  static const Eigen::Matrix<double,3,4> createDefaultFootContactPoints();
 };
 
 #endif /* SYSTEMS_ROBOTINTERFACES_QPLOCOMOTIONPLAN_H_ */
