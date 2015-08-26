@@ -159,7 +159,6 @@ private:
   const std::map<Side, int> aky_indices;
   const std::map<Side, int> akx_indices;
   const int pelvis_id;
-  const Matrix<double,4,3> foot_contact_pts;
 
   lcm::LCM lcm;
   std::string lcm_channel;
@@ -229,8 +228,6 @@ private:
   void updateS1Trajectory();
 
   void applyKneePD(Side side, drake::lcmt_qp_controller_input &qp_input);
-
-  void applyAnklePD(const std::map<Side, bool>& active, const shared_ptr<drc::robot_state_t> robot_state, drake::lcmt_qp_controller_input &qp_input);
 
   static const std::map<SupportLogicType, std::vector<bool> > createSupportLogicMaps();
 

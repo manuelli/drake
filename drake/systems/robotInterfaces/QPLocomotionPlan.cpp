@@ -11,7 +11,6 @@
 #include <string>
 #include "convexHull.h"
 #include "atlasUtil.h"
-#include "ForceTorqueMeasurement.h"
 
 // TODO: discuss possibility of chatter in knee control
 // TODO: make body_motions a map from RigidBody* to BodyMotionData, remove body_id from BodyMotionData?
@@ -21,8 +20,6 @@ using namespace std;
 using namespace Eigen;
 
 const std::map<SupportLogicType, std::vector<bool> > QPLocomotionPlan::support_logic_maps = QPLocomotionPlan::createSupportLogicMaps();
-
-
 
 QPLocomotionPlan::QPLocomotionPlan(RigidBodyManipulator& robot, const QPLocomotionPlanSettings& settings, const std::string& lcm_channel) :
     robot(robot),
@@ -36,8 +33,7 @@ QPLocomotionPlan::QPLocomotionPlan(RigidBodyManipulator& robot, const QPLocomoti
     plan_shift(Vector3d::Zero()),
     shifted_zmp_trajectory(settings.zmp_trajectory),
     last_foot_shift_time(0.0)
-    foot_contact_pts(createDefaultFootContactPoints())
-    {
+{
   for (int i = 1; i < settings.support_times.size(); i++) {
     if (settings.support_times[i] < settings.support_times[i - 1])
       throw std::runtime_error("support times must be increasing");
@@ -55,8 +51,6 @@ QPLocomotionPlan::QPLocomotionPlan(RigidBodyManipulator& robot, const QPLocomoti
     cerr << "ERROR: lcm is not good()" << endl;
   }
 }
-
-
 
 Matrix3Xd getFrontTwoContactPoints(const Ref<const Matrix3Xd>& contact_points) {
   // gets the two frontmost contact points (expressed in body frame with x forward)
@@ -82,7 +76,7 @@ Matrix3Xd getFrontTwoContactPoints(const Ref<const Matrix3Xd>& contact_points) {
 
 template <typename DerivedQ, typename DerivedV>
 drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
-    double t_global, const MatrixBase<DerivedQ>& q, const MatrixBase<DerivedV>& v, const std::vector<bool>& contact_force_detected, const shared_ptr<drc::robot_state_t> robot_state)
+    double t_global, const MatrixBase<DerivedQ>& q, const MatrixBase<DerivedV>& v, const std::vector<bool>& contact_force_detected)
 {
   if (isNaN(start_time))
     start_time = t_global;
@@ -90,7 +84,6 @@ drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
   double t_plan = t_global - start_time;
   if (t_plan < 0)
     throw std::runtime_error("t_plan is negative!"); // TODO: decide how to handle this case; fail fast for now
-  int t_plan_not_truncated = t_plan;
   t_plan = std::min(t_plan, settings.duration);
 
   // find index into supports vector
@@ -134,12 +127,6 @@ drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
 
   // zmp data:
   qp_input.zmp_data = createZMPData(t_plan);
-
-  // records whether or not ankle_pd_override should be active for that side, based on the plan time
-  std::map<Side, bool> ankle_pd_override_active;
-  for (auto it = Side::values.begin(); it != Side::values.end(); ++it) {
-    foot_body_ids[*it] = false;
-  }
 
   bool pelvis_has_tracking = false;
   for (int j = 0; j < settings.body_motions.size(); ++j) {
@@ -228,7 +215,6 @@ drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
       }
     }
 
-
     // extract out current and next polynomial segments
     PiecewisePolynomial<double> body_motion_trajectory_slice = body_motion.getTrajectory().slice(body_motion_segment_index, std::min(2, body_motion.getTrajectory().getNumberOfSegments() - body_motion_segment_index));
 
@@ -269,15 +255,6 @@ drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
     if (body_id == pelvis_id)
       pelvis_has_tracking = true;
 
-
-    // update ankle_override logic
-    // need to redifine side since it went out of scope after the is_foot 'if' statement
-    Side side = side_it->first;
-    if (is_foot && ((t_plan_not_truncated - settings.support_times[support_index]) < ankle_pd_override_active_time)) {
-      ankle_pd_override_active[side] = true;
-    }
-
-
     // If this body is not currently in support, but will be soon (within
     // early_contact_allowed_fraction of the duration of the current support),
     // then generate a new support data for that body which will only be
@@ -293,18 +270,10 @@ drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
               break;
             }
           }
-
-          // allow ankle_pd_override in case of (possible) early contact as well
-          if (is_foot){
-            ankle_pd_override_active[side] = true;
-          }
         }
       }
     }
-  } // end of for loop
-
-  // should apply the anklePDoverride here
-  this->applyAnklePD(ankle_pd_override_active, robot_state, qp_input);
+  }
 
   if (!pelvis_has_tracking)
     throw runtime_error("Expecting a motion_motion_data element for the pelvis");
@@ -355,68 +324,6 @@ void QPLocomotionPlan::applyKneePD(Side side, drake::lcmt_qp_controller_input &q
   joint_pd_override_for_support.weight = knee_pd_settings.at(side).knee_weight;
   qp_input.joint_pd_override.push_back(joint_pd_override_for_support);
   qp_input.num_joint_pd_overrides++;
-}
-
-void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const shared_ptr<drc::robot_state_t> robot_state, drake::lcmt_qp_controller_input &qp_input){
-  // need to transform foot contact points to foot frame
-  auto side_it = active.begin();
-  for(; side_it != active.end(); side_it++){
-
-    // if we didn't pre-approve this side then skip this iteration of the loop
-    if (!side_it->second){
-      continue;
-    }
-
-    ForceTorqueMeasurement ft;
-    Side side = side_it->first;
-    ft.frame_idx = this->foot_body_ids.at(side);
-    ft.wrench = Matrix<double,6,1>::Zero();
-    if (side == Side(LEFT)){
-      ft.wrench(1,1) robot_state.force_torque.l_foot_torque_x;
-      ft.wrench(2,1) robot_state.force_torque.l_foot_torque_y;
-      ft.wrench(6,1) robot_state.force_torque.l_foot_force_z;
-    }
-    else{
-      ft.wrench(1,1) robot_state.force_torque.r_foot_torque_x;
-      ft.wrench(2,1) robot_state.force_torque.r_foot_torque_y;
-      ft.wrench(6,1) robot_state.force_torque.r_foot_force_z;
-    }
-
-    // require at least ankle_pd_force_threshold to do the ankle PD. Currently set at 200 Newtons
-    if (ft.wrench(6,1) < this->ankle_pd_force_threshold){
-      continue;
-    }
-
-    // compute COP
-
-    // first need to compute foot normal in world frame
-    Matrix<double,3,2> pts_foot_frame << 0, 0,
-                                     0, 0,
-                                     0, 1;
-
-    GradientVar<double, 3, 2> gv = robot.forwardKin(pts_foot_frame, foot_body_ids.at(side), 0, 0);
-    
-    Matrix<double,3,2> pts_world_frame = gv.value();
-    Vector3d normal_world_frame = pts_world_frame.cols(1) - pts_world_frame.cols(0);
-
-
-    Matrix<double,3,4> foot_contact_pts_world_frame = robot.forwardKin(foot_contact_pts, foot_body_ids.at(side), 0, 0).value();
-
-    Vector3d point_on_contact_plane = foot_contact_pts_world_frame.rowwise().mean();
-
-    std::vector<ForceTorqueMeasurement> ft_vector;
-    ft_vector.push_back(ft);
-
-    Vector3d cop_world_frame = robot.resolveCenterOfPressure(ft_vector, normal_world_frame, point_on_contact_plane).first()
-    Vector3d cop_foot_frame = robot.forwardKin(cop_world_frame, 0, foot_body_ids.at(side), 0, 0).value();
-
-
-
-
-
-     
-  }
-
 }
 
 void QPLocomotionPlan::setDuration(double duration)
@@ -813,23 +720,6 @@ const std::map<Side, int> QPLocomotionPlan::createJointIndicesMap(RigidBodyManip
     joint_indices[*it] = robot.bodies[joint_id]->position_num_start;
   }
   return joint_indices;
-}
-
-const Matrix<double, 4, 3> createDefaultFootContactPoints(){
-
-  Matrix<double, 3, 4> contact_pts;
-
-  contact_pts << 0.17, 0.17, -0.13, -0.13,
-                 0.0562, -0.0562, -0.0562, 0.0562,
-                 0.0, 0.0, 0.0, 0.0;
-
-
-  // contact_pts << 0.17, 0.0562, 0.0,
-  //                0.17, -0.0562, 0.0,
-  //                -0.13, -0.0562, 0.0,
-  //                -0.13, 0.0562, 0.0;
-
-  return contact_pts;
 }
 
 template drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput<Matrix<double, -1, 1, 0, -1, 1>, Matrix<double, -1, 1, 0, -1, 1> >(double, MatrixBase<Matrix<double, -1, 1, 0, -1, 1> > const&, MatrixBase<Matrix<double, -1, 1, 0, -1, 1> > const&, std::vector<bool, std::allocator<bool> > const&);
