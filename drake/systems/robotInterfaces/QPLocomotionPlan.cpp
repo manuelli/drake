@@ -8,6 +8,7 @@
 #include "splineGeneration.h"
 #include "drakeUtil.h"
 #include "lcmUtil.h"
+// #include "edgeDetector.h"
 #include <string>
 #include "convexHull.h"
 #include "atlasUtil.h"
@@ -22,6 +23,17 @@ using namespace Eigen;
 
 const std::map<SupportLogicType, std::vector<bool> > QPLocomotionPlan::support_logic_maps = QPLocomotionPlan::createSupportLogicMaps();
 
+const Vector4d edgeThreshold(0.05, 0.03, 0.1, 0.03);
+const double ankle_pd_override_active_time = 0.5;  // time during which ankle_pd_override can be active after making contact
+const double ankle_pd_force_threshold = 200;; //force threshold for z component (in  Newtons) before ankle_pd activates, basically our own contact detector
+const Matrix<double,3,4> foot_contact_pts((Matrix<double,3,4>() <<
+                 0.17, 0.17, -0.13, -0.13,
+                 0.0562, -0.0562, -0.0562, 0.0562,
+                 -0.07645, -0.07645, -0.07645, -0.07645).finished());
+
+
+
+
 
 
 QPLocomotionPlan::QPLocomotionPlan(RigidBodyManipulator& robot, const QPLocomotionPlanSettings& settings, const std::string& lcm_channel) :
@@ -35,8 +47,7 @@ QPLocomotionPlan::QPLocomotionPlan(RigidBodyManipulator& robot, const QPLocomoti
     aky_indices(createJointIndicesMap(robot, settings.aky_names)),
     plan_shift(Vector3d::Zero()),
     shifted_zmp_trajectory(settings.zmp_trajectory),
-    last_foot_shift_time(0.0),
-    foot_contact_pts(createDefaultFootContactPoints())
+    last_foot_shift_time(0.0)
     {
   for (int i = 1; i < settings.support_times.size(); i++) {
     if (settings.support_times[i] < settings.support_times[i - 1])
@@ -54,6 +65,7 @@ QPLocomotionPlan::QPLocomotionPlan(RigidBodyManipulator& robot, const QPLocomoti
   {
     cerr << "ERROR: lcm is not good()" << endl;
   }
+
 }
 
 
@@ -273,7 +285,7 @@ drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
     // update ankle_override logic
     // need to redifine side since it went out of scope after the is_foot 'if' statement
     Side side = side_it->first;
-    if (is_foot && ((t_plan_not_truncated - settings.support_times[support_index]) < this->ankle_pd_override_active_time)) {
+    if (is_foot && ((t_plan_not_truncated - settings.support_times[support_index]) < ankle_pd_override_active_time)) {
       ankle_pd_override_active[side] = true;
     }
 
@@ -383,14 +395,14 @@ void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const sh
     }
 
     // require at least ankle_pd_force_threshold to do the ankle PD. Currently set at 200 Newtons
-    if (ft.wrench(6,1) < this->ankle_pd_force_threshold){
+    if (ft.wrench(6,1) < ankle_pd_force_threshold){
       continue;
     }
 
     // compute COP
 
     // first need to compute foot normal in world frame
-    Matrix<double,3,2> pts_foot_frame;
+    Matrix<double,3,Eigen::Dynamic> pts_foot_frame(3,2);
     pts_foot_frame << 0, 0,
                       0, 0,
                       0, 1;
@@ -400,7 +412,8 @@ void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const sh
     Matrix<double,3,2> pts_world_frame = gv.value();
     Vector3d normal_world_frame = pts_world_frame.col(1) - pts_world_frame.col(0);
 
-    Matrix<double,3,4> foot_contact_pts_world_frame = robot.forwardKin(foot_contact_pts, foot_body_ids.at(side), 0, 0, 0).value();
+    Matrix<double, 3, Dynamic> foot_contact_pts_copy = foot_contact_pts;
+    Matrix<double,3,4> foot_contact_pts_world_frame = robot.forwardKin(foot_contact_pts_copy, foot_body_ids.at(side), 0, 0, 0).value();
 
     Vector3d point_on_contact_plane = foot_contact_pts_world_frame.rowwise().mean();
 
@@ -409,11 +422,15 @@ void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const sh
 
     Vector3d cop_world_frame = robot.resolveCenterOfPressure(ft_vector, normal_world_frame, point_on_contact_plane).first;
 
-    Vector3d cop_foot_frame = robot.forwardKin(cop_world_frame, 0, foot_body_ids.at(side), 0, 0).value();
+    
+    // // compute distance to foot edges, check whether any is less than edge
+    // Vector4d edgeDistance = distanceToEdges(foot_contact_pts_world_frame, cop_world_frame);
+    // bool edgeContact = ((edgeThreshold - edgeDistance).array() > 0).any();
 
-
-
-
+    // std::cout << "edge distance is" << std::endl << edgeDistance << std::endl;
+    // if (edgeContact){
+    //   std::cout << "DETECTED EDGE CONTACT" << std::endl;
+    // }
 
      
   }
@@ -816,16 +833,6 @@ const std::map<Side, int> QPLocomotionPlan::createJointIndicesMap(RigidBodyManip
   return joint_indices;
 }
 
-const Matrix<double, 3, 4> createDefaultFootContactPoints(){
-
-  Matrix<double, 3, 4> contact_pts;
-
-  contact_pts << 0.17, 0.17, -0.13, -0.13,
-                 0.0562, -0.0562, -0.0562, 0.0562,
-                 -0.07645, -0.07645, -0.07645, -0.07645;
-
-  return contact_pts;
-}
 
 template drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput<Matrix<double, -1, 1, 0, -1, 1>, Matrix<double, -1, 1, 0, -1, 1> >(double, MatrixBase<Matrix<double, -1, 1, 0, -1, 1> > const&, MatrixBase<Matrix<double, -1, 1, 0, -1, 1> > const&, std::vector<bool, std::allocator<bool> > const&, std::shared_ptr<drc::robot_state_t> robot_state);
 
