@@ -21,7 +21,7 @@ classdef QPLocomotionPlanCPPWrapper < QPControllerPlan
     end
 
     ret = isFinished(obj, t, x);
-    qp_input = getQPControllerInput(obj, t_global, x, contact_force_detected)
+    qp_input = getQPControllerInput(obj, t_global, x, contact_force_detected, byte_array)
     ret = duration(obj)
     ret = start_time(obj)
     setStartTime(obj, t)

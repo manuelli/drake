@@ -160,14 +160,11 @@ private:
   const std::map<Side, int> aky_indices;
   const std::map<Side, int> akx_indices;
   const int pelvis_id;
-  const Matrix<double,3,4> foot_contact_pts;
 
   lcm::LCM lcm;
   std::string lcm_channel;
 
   double start_time;
-  double ankle_pd_override_active_time = 0.5; // time during which ankle_pd_override can be active after making contact
-  double ankle_pd_force_threshold = 200; // force threshold in Newtons
   Vector3d plan_shift;
   std::map<Side,Vector3d> foot_shifts;
   double last_foot_shift_time;
@@ -241,7 +238,6 @@ private:
 
   static const std::map<Side, int> createJointIndicesMap(RigidBodyManipulator& robot, const std::map<Side, std::string>& foot_body_ids);
 
-  static const Eigen::Matrix<double,3,4> createDefaultFootContactPoints();
 };
 
 #endif /* SYSTEMS_ROBOTINTERFACES_QPLOCOMOTIONPLAN_H_ */
