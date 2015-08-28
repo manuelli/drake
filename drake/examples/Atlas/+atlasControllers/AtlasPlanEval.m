@@ -19,6 +19,7 @@ classdef AtlasPlanEval < PlanEval
       end
 
       if nargin < 5
+        print 'did not receive byte_array_input, creating a dummy one to pass to getQPControllerInput'
         % constructs a default robot_state_t msg with correctly filled in force_torque message 
         state_msg = obj.constructDummyStateMsg(t,x);
         stream = java.io.ByteArrayOutputStream();
