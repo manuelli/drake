@@ -8,7 +8,7 @@
 #include "splineGeneration.h"
 #include "drakeUtil.h"
 #include "lcmUtil.h"
-// #include "edgeDetector.h"
+#include "edgeDetector.h"
 #include <string>
 #include "convexHull.h"
 #include "atlasUtil.h"
@@ -23,15 +23,15 @@ using namespace Eigen;
 
 const std::map<SupportLogicType, std::vector<bool> > QPLocomotionPlan::support_logic_maps = QPLocomotionPlan::createSupportLogicMaps();
 
-const Vector4d edgeThreshold(0.05, 0.03, 0.1, 0.03);
-const double ankle_pd_override_active_time = 0.5;  // time during which ankle_pd_override can be active after making contact
-const double ankle_pd_force_threshold = 200;; //force threshold for z component (in  Newtons) before ankle_pd activates, basically our own contact detector
+// const Vector4d edgeThreshold(0.05, 0.03, 0.1, 0.03);
+// const double ankle_pd_override_active_time = 0.5;  // time during which ankle_pd_override can be active after making contact
+// const double ankle_pd_force_threshold = 200;; //force threshold for z component (in  Newtons) before ankle_pd activates, basically our own contact detector
 const Matrix<double,3,4> foot_contact_pts((Matrix<double,3,4>() <<
                  0.17, 0.17, -0.13, -0.13,
                  0.0562, -0.0562, -0.0562, 0.0562,
                  -0.07645, -0.07645, -0.07645, -0.07645).finished());
 
-
+const std::map<std::string, int> edge_idx_map = {{"front",0},{"right",1},{"back", 2},{"left",3}};
 
 
 
@@ -47,7 +47,8 @@ QPLocomotionPlan::QPLocomotionPlan(RigidBodyManipulator& robot, const QPLocomoti
     aky_indices(createJointIndicesMap(robot, settings.aky_names)),
     plan_shift(Vector3d::Zero()),
     shifted_zmp_trajectory(settings.zmp_trajectory),
-    last_foot_shift_time(0.0)
+    last_foot_shift_time(0.0),
+    pd_override_params(createJointPDOverrideParams())
     {
   for (int i = 1; i < settings.support_times.size(); i++) {
     if (settings.support_times[i] < settings.support_times[i - 1])
@@ -66,6 +67,10 @@ QPLocomotionPlan::QPLocomotionPlan(RigidBodyManipulator& robot, const QPLocomoti
     cerr << "ERROR: lcm is not good()" << endl;
   }
 
+
+  foot_contact_time[Side(Side::LEFT)] = std::numeric_limits<double>::quiet_NaN();
+  foot_contact_time[Side(Side::RIGHT)] = std::numeric_limits<double>::quiet_NaN();
+  std::cout << "inserted nan's into map" << std::endl;
 }
 
 
@@ -119,6 +124,32 @@ drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
   const RigidBodySupportState& next_support = is_last_support ? settings.supports[support_index] : settings.supports[support_index + 1];
   if (settings.use_plan_shift) {
     updatePlanShift(t_plan, contact_force_detected, support_index);
+  }
+
+  // update foot_contact_time
+  // std::cout << "foot contact time is " << std::endl << foot_contact_time.toString() << std::endl;
+  for (auto fct: foot_contact_time){
+    std::cout << "entered loop to update foot_contact_time" << std::endl;
+    std::cout << "foot is " << fct.first.toString() << std::endl;
+    std::cout << "time is " << fct.second << std::endl;
+    int body_id = foot_body_ids.at(fct.first);
+
+    std:cout << "body id is " << body_id << std::endl;
+
+    bool is_supporting_body = isSupportingBody(body_id, support_state);
+    std::cout << "is supporting body " << is_supporting_body << std::endl;
+    bool time_is_nan = isNaN(fct.second);
+
+    // wasn't in contact, now it is, so reset the contact time
+    if (time_is_nan && is_supporting_body){
+      std::cout << "value should be " << settings.support_times[support_index] << std::endl;
+      foot_contact_time.at(fct.first) = settings.support_times[support_index];
+    }
+
+    // was in contact, now it isn't any more
+    if (!time_is_nan && !is_supporting_body){
+      foot_contact_time.at(fct.first) = std::numeric_limits<double>::quiet_NaN();
+    }
   }
 
   drake::lcmt_qp_controller_input qp_input;
@@ -285,8 +316,13 @@ drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
     // update ankle_override logic
     // need to redifine side since it went out of scope after the is_foot 'if' statement
     Side side = side_it->first;
-    if (is_foot && ((t_plan_not_truncated - settings.support_times[support_index]) < ankle_pd_override_active_time)) {
-      ankle_pd_override_active[side] = true;
+    if (is_foot){      
+      if (!isNaN(foot_contact_time.at(side))){
+        if ( (t_plan_not_truncated - foot_contact_time.at(side)) < pd_override_params.active_time ){
+          std::cout << side.toString() << " AFTER CONTACT" << std::endl;
+          ankle_pd_override_active[side] = true;
+        }
+      }
     }
 
 
@@ -308,6 +344,7 @@ drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
 
           // allow ankle_pd_override in case of (possible) early contact as well
           if (is_foot){
+            std::cout << side.toString() << " EARLY CONTACT" << std::endl;
             ankle_pd_override_active[side] = true;
           }
         }
@@ -383,21 +420,30 @@ void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const sh
     Side side = side_it->first;
     ft.frame_idx = this->foot_body_ids.at(side);
     ft.wrench = Matrix<double,6,1>::Zero();
+
     if (side == Side(Side::LEFT)){
-      ft.wrench(1,1) = robot_state->force_torque.l_foot_torque_x;
-      ft.wrench(2,1) = robot_state->force_torque.l_foot_torque_y;
-      ft.wrench(6,1) = robot_state->force_torque.l_foot_force_z;
+      // std::cout << "if statement LEFT reached" << std::endl;
+      // std::cout << "l_foot_force_z" << std::endl << robot_state->force_torque.l_foot_force_z << std::endl;
+      ft.wrench(0,0) = robot_state->force_torque.l_foot_torque_x;
+      ft.wrench(1,0) = robot_state->force_torque.l_foot_torque_y;
+      ft.wrench(5,0) = robot_state->force_torque.l_foot_force_z;
     }
     else{
-      ft.wrench(1,1) = robot_state->force_torque.r_foot_torque_x;
-      ft.wrench(2,1) = robot_state->force_torque.r_foot_torque_y;
-      ft.wrench(6,1) = robot_state->force_torque.r_foot_force_z;
+      // std::cout << "if statement RIGHT reached" << std::endl;
+      ft.wrench(0,0) = robot_state->force_torque.r_foot_torque_x;
+      ft.wrench(1,0) = robot_state->force_torque.r_foot_torque_y;
+      ft.wrench(5,0) = robot_state->force_torque.r_foot_force_z;
     }
 
+     // std::cout << side.toString() << " foot pd loop entered" << std::endl;
+
     // require at least ankle_pd_force_threshold to do the ankle PD. Currently set at 200 Newtons
-    if (ft.wrench(6,1) < ankle_pd_force_threshold){
+    if (ft.wrench(5,0) < pd_override_params.force_threshold){
       continue;
     }
+
+   
+    // std::cout << "FT Wrench is " << std::endl << ft.wrench << std::endl;
 
     // compute COP
 
@@ -412,26 +458,88 @@ void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const sh
     Matrix<double,3,2> pts_world_frame = gv.value();
     Vector3d normal_world_frame = pts_world_frame.col(1) - pts_world_frame.col(0);
 
+    // std::cout << "normal vector in world frame is" << std::endl << normal_world_frame << std::endl;
+
     Matrix<double, 3, Dynamic> foot_contact_pts_copy = foot_contact_pts;
     Matrix<double,3,4> foot_contact_pts_world_frame = robot.forwardKin(foot_contact_pts_copy, foot_body_ids.at(side), 0, 0, 0).value();
 
+    // std::cout << "foot contat pts world frame" << std::endl << foot_contact_pts_world_frame << std::endl;
+
     Vector3d point_on_contact_plane = foot_contact_pts_world_frame.rowwise().mean();
+
+    // std::cout << "point on contact plane" << std::endl << point_on_contact_plane << std::endl;
 
     std::vector<ForceTorqueMeasurement> ft_vector;
     ft_vector.push_back(ft);
 
+
     Vector3d cop_world_frame = robot.resolveCenterOfPressure(ft_vector, normal_world_frame, point_on_contact_plane).first;
 
     
-    // // compute distance to foot edges, check whether any is less than edge
-    // Vector4d edgeDistance = distanceToEdges(foot_contact_pts_world_frame, cop_world_frame);
-    // bool edgeContact = ((edgeThreshold - edgeDistance).array() > 0).any();
+    // compute distance to foot edges, check whether any is less than edge
+    Vector4d edgeDistance = distanceToEdges(foot_contact_pts_world_frame, cop_world_frame);
+    bool edgeContact = ((pd_override_params.edgeThreshold - edgeDistance).array() > 0).any();
+
+    // continue if no edge contact detected
+    if (!edgeContact){
+      continue;
+    }
+
+    // std::cout << side.toString() << " Foot COP Position is" << std::endl;
+    // std::cout << cop_world_frame << std::endl;
 
     // std::cout << "edge distance is" << std::endl << edgeDistance << std::endl;
     // if (edgeContact){
     //   std::cout << "DETECTED EDGE CONTACT" << std::endl;
     // }
 
+    // apply the anklePDOverride
+    std::map<std::string, int>::const_iterator iter;
+    for (iter = edge_idx_map.begin(); iter != edge_idx_map.end(); iter++){
+      std::string edgeName = iter->first;
+      int idx = iter->second;
+      if (edgeDistance(idx) > pd_override_params.edgeThreshold(idx)){
+        continue;
+      }
+      drake::lcmt_joint_pd_override joint_pd_override;
+      joint_pd_override.timestamp = 0;
+
+      if (edgeName == "front"){
+        joint_pd_override.position_ind = aky_indices.at(side) + 1; // use 1-indexing for LCM
+        joint_pd_override.qi_des = 0;
+        joint_pd_override.qdi_des = -pd_override_params.qd_des.at("aky");
+        joint_pd_override.kp = pd_override_params.kp.at("aky");
+        joint_pd_override.kd = pd_override_params.kd.at("aky");
+        joint_pd_override.weight = pd_override_params.weight.at("aky");
+      }
+      else if (edgeName == "back"){
+        joint_pd_override.position_ind = aky_indices.at(side) + 1; // use 1-indexing for LCM
+        joint_pd_override.qi_des = 0;
+        joint_pd_override.qdi_des = pd_override_params.qd_des.at("aky");
+        joint_pd_override.kp = pd_override_params.kp.at("aky");
+        joint_pd_override.kd = pd_override_params.kd.at("aky");
+        joint_pd_override.weight = pd_override_params.weight.at("aky");
+      }
+      else if (edgeName == "right"){
+        joint_pd_override.position_ind = akx_indices.at(side) + 1; // use 1-indexing for LCM
+        joint_pd_override.qi_des = 0;
+        joint_pd_override.qdi_des = -pd_override_params.qd_des.at("akx");
+        joint_pd_override.kp = pd_override_params.kp.at("akx");
+        joint_pd_override.kd = pd_override_params.kd.at("akx");
+        joint_pd_override.weight = pd_override_params.weight.at("akx");
+      }
+      else{ // this corresponds to edgeName == "left"
+        joint_pd_override.position_ind = akx_indices.at(side) + 1; // use 1-indexing for LCM
+        joint_pd_override.qi_des = 0;
+        joint_pd_override.qdi_des = pd_override_params.qd_des.at("akx");
+        joint_pd_override.kp = pd_override_params.kp.at("akx");
+        joint_pd_override.kd = pd_override_params.kd.at("akx");
+        joint_pd_override.weight = pd_override_params.weight.at("akx");
+      }
+
+      qp_input.joint_pd_override.push_back(joint_pd_override);
+      qp_input.num_joint_pd_overrides++;
+    }
      
   }
 
@@ -831,6 +939,26 @@ const std::map<Side, int> QPLocomotionPlan::createJointIndicesMap(RigidBodyManip
     joint_indices[*it] = robot.bodies[joint_id]->position_num_start;
   }
   return joint_indices;
+}
+
+const JointPDOverrideParams QPLocomotionPlan::createJointPDOverrideParams(){
+  JointPDOverrideParams pd_override_params;
+
+  std::map<std::string, double> qd_des{{"aky",0.5}, {"akx",0.5}};
+  std::map<std::string, double> kp{{"aky", 0}, {"akx",0}};
+  std::map<std::string, double> kd{{"aky", 5}, {"akx",5}};
+  std::map<std::string, double> weight{{"aky",0.0}, {"akx", 0.0}};
+
+  pd_override_params.qd_des = qd_des;
+  pd_override_params.kp = kp;
+  pd_override_params.kd = kd;
+  pd_override_params.weight = weight;
+
+  pd_override_params.edgeThreshold << 0.05, 0.03, 0.1, 0.03;
+  pd_override_params.active_time = 0.5;
+  pd_override_params.force_threshold = 200;
+
+  return pd_override_params;
 }
 
 
