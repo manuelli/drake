@@ -150,6 +150,16 @@ struct QPLocomotionPlanSettings {
 
 };
 
+struct JointPDOverrideParams{
+  std::map<std::string, double> qd_des;
+  std::map<std::string, double> kp;
+  std::map<std::string, double> kd;
+  std::map<std::string, double> weight;
+  double active_time;
+  double force_threshold;
+  Vector4d edgeThreshold;
+};
+
 class QPLocomotionPlan
 {
 private:
@@ -160,6 +170,8 @@ private:
   const std::map<Side, int> aky_indices;
   const std::map<Side, int> akx_indices;
   const int pelvis_id;
+  const JointPDOverrideParams pd_override_params;
+  std::map<Side, double> foot_contact_time;
 
   lcm::LCM lcm;
   std::string lcm_channel;
@@ -237,6 +249,8 @@ private:
   static const std::map<Side, int> createFootBodyIdMap(RigidBodyManipulator& robot, const std::map<Side, std::string>& foot_names);
 
   static const std::map<Side, int> createJointIndicesMap(RigidBodyManipulator& robot, const std::map<Side, std::string>& foot_body_ids);
+
+  static const JointPDOverrideParams createJointPDOverrideParams();
 
 };
 
