@@ -315,11 +315,11 @@ drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
 
     // update ankle_override logic
     // need to redifine side since it went out of scope after the is_foot 'if' statement
-    Side side = side_it->first;
+    Side side = side_it->first; // note: this is an off the end pointer if no foot is found
     if (is_foot){      
       if (!isNaN(foot_contact_time.at(side))){
         if ( (t_plan_not_truncated - foot_contact_time.at(side)) < pd_override_params.active_time ){
-          std::cout << side.toString() << " AFTER CONTACT" << std::endl;
+          // std::cout << side.toString() << " AFTER CONTACT" << std::endl;
           ankle_pd_override_active[side] = true;
         }
       }
@@ -344,7 +344,7 @@ drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
 
           // allow ankle_pd_override in case of (possible) early contact as well
           if (is_foot){
-            std::cout << side.toString() << " EARLY CONTACT" << std::endl;
+            // std::cout << side.toString() << " EARLY CONTACT" << std::endl;
             ankle_pd_override_active[side] = true;
           }
         }
@@ -501,6 +501,8 @@ void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const sh
       if (edgeDistance(idx) > pd_override_params.edgeThreshold(idx)){
         continue;
       }
+
+      std::cout << edgeName << " edge contact detected" << std::endl;
       drake::lcmt_joint_pd_override joint_pd_override;
       joint_pd_override.timestamp = 0;
 
