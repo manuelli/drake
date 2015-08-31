@@ -677,7 +677,7 @@ void QPLocomotionPlan::updateSwingTrajectory(double t_plan, BodyMotionData& body
   x0.head<3>() = x0_xyzquat.value().head<3>();
   if (settings.use_plan_shift) {
     for (auto it = settings.plan_shift_body_motion_indices.begin(); it != settings.plan_shift_body_motion_indices.end(); ++it) {
-      x0(*it) += plan_shift(*it);
+      x0(*it) += plan_shift(*it); // this is to make sure that when we apply plan shift to this later, before shipping out the qp_input, it does the correct thing. Essentially this is undoing the later plan shift.
     }
   }
   x0.tail<3>() = x0_expmap.value().tail<3>();

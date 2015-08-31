@@ -13,7 +13,7 @@ classdef QPLocomotionPlanSettings
     mu = 0.7;
     D_control;
     use_plan_shift = false;
-    plan_shift_body_motion_inds = 3;
+    plan_shift_body_motion_inds = [];
     g = 9.81; % gravity m/s^2
     is_quasistatic = false;
     constrained_dofs = [];
@@ -240,7 +240,7 @@ classdef QPLocomotionPlanSettings
         obj.V.S = fasteval(obj.V.S, 0);
       end
       obj.gain_set = 'walking';
-      obj.use_plan_shift = false;
+      obj.use_plan_shift = true;
     end
 
     function obj = fromQuasistaticQTraj(biped, qtraj, options)
