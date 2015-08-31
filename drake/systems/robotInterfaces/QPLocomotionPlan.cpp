@@ -129,20 +129,20 @@ drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
   // update foot_contact_time
   // std::cout << "foot contact time is " << std::endl << foot_contact_time.toString() << std::endl;
   for (auto fct: foot_contact_time){
-    std::cout << "entered loop to update foot_contact_time" << std::endl;
-    std::cout << "foot is " << fct.first.toString() << std::endl;
-    std::cout << "time is " << fct.second << std::endl;
+    // std::cout << "entered loop to update foot_contact_time" << std::endl;
+    // std::cout << "foot is " << fct.first.toString() << std::endl;
+    // std::cout << "time is " << fct.second << std::endl;
     int body_id = foot_body_ids.at(fct.first);
 
-    std:cout << "body id is " << body_id << std::endl;
+    // std:cout << "body id is " << body_id << std::endl;
 
     bool is_supporting_body = isSupportingBody(body_id, support_state);
-    std::cout << "is supporting body " << is_supporting_body << std::endl;
+    // std::cout << "is supporting body " << is_supporting_body << std::endl;
     bool time_is_nan = isNaN(fct.second);
 
     // wasn't in contact, now it is, so reset the contact time
     if (time_is_nan && is_supporting_body){
-      std::cout << "value should be " << settings.support_times[support_index] << std::endl;
+      // std::cout << "value should be " << settings.support_times[support_index] << std::endl;
       foot_contact_time.at(fct.first) = settings.support_times[support_index];
     }
 
