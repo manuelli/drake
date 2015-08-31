@@ -12,13 +12,8 @@ classdef CoordinateFrame < handle
     coordinates={}; % list of coordinate names
 
     prefix;         % a vector character prefix used for the msspoly variables, or a vector of size dim listing prefixes for each variable
-    coordinates={}; % list of coordinate names
   end
   properties (Access=private)
-<<<<<<< HEAD
-=======
-    
->>>>>>> expose coordinates property of CoordinateFrame, it breaks everything if it's made private
     poly=[];        % optional msspoly variables for this frame
   end
 
