@@ -501,8 +501,10 @@ void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const sh
       if (edgeDistance(idx) > pd_override_params.edgeThreshold(idx)){
         continue;
       }
-
-      std::cout << edgeName << " edge contact detected" << std::endl;
+      
+      std::cout << side.toString() << " foot " << edgeName << " edge contact detected" << std::endl;
+      std::cout << "<<<<<<<<<<<<<<<<<<<" << std::endl;
+      
       drake::lcmt_joint_pd_override joint_pd_override;
       joint_pd_override.timestamp = 0;
 
@@ -946,10 +948,10 @@ const std::map<Side, int> QPLocomotionPlan::createJointIndicesMap(RigidBodyManip
 const JointPDOverrideParams QPLocomotionPlan::createJointPDOverrideParams(){
   JointPDOverrideParams pd_override_params;
 
-  std::map<std::string, double> qd_des{{"aky",0.5}, {"akx",0.5}};
+  std::map<std::string, double> qd_des{{"aky",0.75}, {"akx",1.5}};
   std::map<std::string, double> kp{{"aky", 0}, {"akx",0}};
   std::map<std::string, double> kd{{"aky", 5}, {"akx",5}};
-  std::map<std::string, double> weight{{"aky",0.0}, {"akx", 0.0}};
+  std::map<std::string, double> weight{{"aky",1e-3}, {"akx", 1e-3}};
 
   pd_override_params.qd_des = qd_des;
   pd_override_params.kp = kp;
