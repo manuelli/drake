@@ -159,6 +159,7 @@ drake::lcmt_qp_controller_input QPLocomotionPlan::createQPControllerInput(
   qp_input.num_tracked_bodies = 0;
   qp_input.num_external_wrenches = 0;
   qp_input.num_joint_pd_overrides = 0;
+  qp_input.num_reset_integrator_position_idx = 0;
 
   // whole body data
   auto q_des = settings.q_traj.value(t_plan);
@@ -408,6 +409,7 @@ void QPLocomotionPlan::applyKneePD(Side side, drake::lcmt_qp_controller_input &q
 
 void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const shared_ptr<drc::robot_state_t> robot_state, drake::lcmt_qp_controller_input &qp_input){
   // need to transform foot contact points to foot frame
+
   auto side_it = active.begin();
   for(; side_it != active.end(); side_it++){
 
@@ -504,41 +506,53 @@ void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const sh
       
       std::cout << side.toString() << " foot " << edgeName << " edge contact detected" << std::endl;
       std::cout << "<<<<<<<<<<<<<<<<<<<" << std::endl;
-      
+
       drake::lcmt_joint_pd_override joint_pd_override;
       joint_pd_override.timestamp = 0;
 
       if (edgeName == "front"){
-        joint_pd_override.position_ind = aky_indices.at(side) + 1; // use 1-indexing for LCM
+        int position_ind = aky_indices.at(side) + 1;
+        joint_pd_override.position_ind = position_ind; // use 1-indexing for LCM
         joint_pd_override.qi_des = 0;
         joint_pd_override.qdi_des = -pd_override_params.qd_des.at("aky");
         joint_pd_override.kp = pd_override_params.kp.at("aky");
         joint_pd_override.kd = pd_override_params.kd.at("aky");
         joint_pd_override.weight = pd_override_params.weight.at("aky");
+        qp_input.reset_integrator_position_idx.push_back(position_ind);
+        qp_input.num_reset_integrator_position_idx++;
       }
       else if (edgeName == "back"){
-        joint_pd_override.position_ind = aky_indices.at(side) + 1; // use 1-indexing for LCM
+        int position_ind = aky_indices.at(side) + 1;
+        joint_pd_override.position_ind = position_ind; // use 1-indexing for LCM
         joint_pd_override.qi_des = 0;
         joint_pd_override.qdi_des = pd_override_params.qd_des.at("aky");
         joint_pd_override.kp = pd_override_params.kp.at("aky");
         joint_pd_override.kd = pd_override_params.kd.at("aky");
         joint_pd_override.weight = pd_override_params.weight.at("aky");
+        qp_input.reset_integrator_position_idx.push_back(position_ind);
+        qp_input.num_reset_integrator_position_idx++;
       }
       else if (edgeName == "right"){
-        joint_pd_override.position_ind = akx_indices.at(side) + 1; // use 1-indexing for LCM
+        int position_ind = akx_indices.at(side) + 1;
+        joint_pd_override.position_ind = position_ind; // use 1-indexing for LCM
         joint_pd_override.qi_des = 0;
         joint_pd_override.qdi_des = -pd_override_params.qd_des.at("akx");
         joint_pd_override.kp = pd_override_params.kp.at("akx");
         joint_pd_override.kd = pd_override_params.kd.at("akx");
         joint_pd_override.weight = pd_override_params.weight.at("akx");
+        qp_input.reset_integrator_position_idx.push_back(position_ind);
+        qp_input.num_reset_integrator_position_idx++;
       }
       else{ // this corresponds to edgeName == "left"
-        joint_pd_override.position_ind = akx_indices.at(side) + 1; // use 1-indexing for LCM
+        int position_ind = akx_indices.at(side) + 1;
+        joint_pd_override.position_ind = position_ind; // use 1-indexing for LCM
         joint_pd_override.qi_des = 0;
         joint_pd_override.qdi_des = pd_override_params.qd_des.at("akx");
         joint_pd_override.kp = pd_override_params.kp.at("akx");
         joint_pd_override.kd = pd_override_params.kd.at("akx");
         joint_pd_override.weight = pd_override_params.weight.at("akx");
+        qp_input.reset_integrator_position_idx.push_back(position_ind);
+        qp_input.num_reset_integrator_position_idx++;
       }
 
       qp_input.joint_pd_override.push_back(joint_pd_override);
