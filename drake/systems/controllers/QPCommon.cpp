@@ -194,6 +194,14 @@ void applyJointPDOverride(const std::vector<drake::lcmt_joint_pd_override> &join
   }
 }
 
+// reset the integrators specified in the qp_input message. Will do nothing if qp_input->reset_integrator_position_idx is empty
+void resetIntegrators(NewQPControllerData *pdata, const std::shared_ptr<drake::lcmt_qp_controller_input> qp_input){
+  for (auto it = qp_input->reset_integrator_position_idx.begin(); it!=qp_input->reset_integrator_position_idx.end(); it++){
+    int ind = *it - 1;
+    pdata->state.vref_integrator_state[ind] = 0;
+  }
+}
+
 double averageContactPointHeight(RigidBodyManipulator* r, std::vector<SupportStateElement, Eigen::aligned_allocator<SupportStateElement> >& active_supports, int nc)
 {
   Eigen::Matrix3Xd contact_positions_world(3, nc);
@@ -397,6 +405,8 @@ int setupAndSolveQP(
 
   addJointSoftLimits(params->joint_soft_limits, robot_state, q_des, active_supports, qp_input->joint_pd_override);
   applyJointPDOverride(qp_input->joint_pd_override, robot_state, pid_out, w_qdd);
+
+  resetIntegrators(pdata, qp_input);
 
   qp_output->q_ref = pid_out.q_ref;
 
