@@ -23,4 +23,7 @@ struct lcmt_qp_controller_input
 	lcmt_joint_pd_override joint_pd_override[num_joint_pd_overrides];
 
 	string param_set_name;
+
+	int32_t num_reset_integrator_position_idx;
+	int32_t reset_integrator_position_idx[num_reset_integrator_position_idx];
 }
