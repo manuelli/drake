@@ -511,8 +511,8 @@ void QPLocomotionPlan::applyAnklePD(const std::map<Side, bool>& active, const sh
       joint_pd_override.timestamp = 0;
 
       if (edgeName == "front"){
-        int position_ind = aky_indices.at(side) + 1;
-        joint_pd_override.position_ind = position_ind; // use 1-indexing for LCM
+        int position_ind = aky_indices.at(side) + 1; // use 1-indexing for LCM
+        joint_pd_override.position_ind = position_ind; 
         joint_pd_override.qi_des = 0;
         joint_pd_override.qdi_des = -pd_override_params.qd_des.at("aky");
         joint_pd_override.kp = pd_override_params.kp.at("aky");
@@ -965,7 +965,7 @@ const JointPDOverrideParams QPLocomotionPlan::createJointPDOverrideParams(){
   std::map<std::string, double> qd_des{{"aky",0.5}, {"akx",0.5}};
   std::map<std::string, double> kp{{"aky", 0}, {"akx",0}};
   std::map<std::string, double> kd{{"aky", 5}, {"akx",5}};
-  std::map<std::string, double> weight{{"aky",1e-3}, {"akx", 1e-3}};
+  std::map<std::string, double> weight{{"aky",0}, {"akx", 0}};
 
   pd_override_params.qd_des = qd_des;
   pd_override_params.kp = kp;
@@ -973,7 +973,7 @@ const JointPDOverrideParams QPLocomotionPlan::createJointPDOverrideParams(){
   pd_override_params.weight = weight;
 
   pd_override_params.edgeThreshold << 0.05, 0.03, 0.1, 0.03;
-  pd_override_params.active_time = 0.5;
+  pd_override_params.active_time = 1;
   pd_override_params.force_threshold = 200;
 
   return pd_override_params;

@@ -87,6 +87,8 @@ VectorXd velocityReference(NewQPControllerData *pdata, double t, const Ref<Vecto
 
   pdata->state.vref_integrator_state = (1-params->eta)*pdata->state.vref_integrator_state + params->eta*qd + qdd_limited*dt;
 
+
+  // this is just wrong, should set it to current qd, NOT zero!!!!
   if (params->zero_ankles_on_contact && foot_contact[0] == 1) {
     for (i=0; i < rpc->position_indices.at("l_leg_ak").size(); i++) {
       pdata->state.vref_integrator_state(rpc->position_indices.at("l_leg_ak")(i)) = 0;
@@ -97,6 +99,8 @@ VectorXd velocityReference(NewQPControllerData *pdata, double t, const Ref<Vecto
       pdata->state.vref_integrator_state(rpc->position_indices.at("r_leg_ak")(i)) = 0;
     }
   }
+
+  //this is correct!
   if (pdata->state.foot_contact_prev[0] != foot_contact[0]) {
     // contact state changed, reset integrated velocities
     for (i=0; i < rpc->position_indices.at("l_leg").size(); i++) {
@@ -195,10 +199,11 @@ void applyJointPDOverride(const std::vector<drake::lcmt_joint_pd_override> &join
 }
 
 // reset the integrators specified in the qp_input message. Will do nothing if qp_input->reset_integrator_position_idx is empty
-void resetIntegrators(NewQPControllerData *pdata, const std::shared_ptr<drake::lcmt_qp_controller_input> qp_input){
+void resetIntegrators(NewQPControllerData *pdata, const std::shared_ptr<drake::lcmt_qp_controller_input> qp_input, const Ref<const VectorXd> &qd){
   for (auto it = qp_input->reset_integrator_position_idx.begin(); it!=qp_input->reset_integrator_position_idx.end(); it++){
     int ind = *it - 1;
-    pdata->state.vref_integrator_state[ind] = 0;
+    std::cout << "resetting integrator at position " << ind << std::endl;
+    pdata->state.vref_integrator_state(ind) = qd(ind);
   }
 }
 
@@ -406,7 +411,7 @@ int setupAndSolveQP(
   addJointSoftLimits(params->joint_soft_limits, robot_state, q_des, active_supports, qp_input->joint_pd_override);
   applyJointPDOverride(qp_input->joint_pd_override, robot_state, pid_out, w_qdd);
 
-  resetIntegrators(pdata, qp_input);
+  // resetIntegrators(pdata, qp_input, robot_state.qd);
 
   qp_output->q_ref = pid_out.q_ref;
 
