@@ -962,7 +962,7 @@ const std::map<Side, int> QPLocomotionPlan::createJointIndicesMap(RigidBodyManip
 const JointPDOverrideParams QPLocomotionPlan::createJointPDOverrideParams(){
   JointPDOverrideParams pd_override_params;
 
-  std::map<std::string, double> qd_des{{"aky",0.75}, {"akx",1.5}};
+  std::map<std::string, double> qd_des{{"aky",0.5}, {"akx",0.5}};
   std::map<std::string, double> kp{{"aky", 0}, {"akx",0}};
   std::map<std::string, double> kd{{"aky", 5}, {"akx",5}};
   std::map<std::string, double> weight{{"aky",1e-3}, {"akx", 1e-3}};
