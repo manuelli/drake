@@ -161,7 +161,7 @@ classdef Atlas < TimeSteppingRigidBodyManipulator & Biped
       obj = obj.setStateFrame(state_frame);
 
       % Same bit of complexity for input frame to get hand inputs
-      if (obj.hand_right > 0 || obj.hand_left > 0 || obj.external_force > 0)
+      if (obj.hand_right > 0 || obj.hand_left > 0 || obj.external_force > 0 || obj.has_force_element)
         input_frame = getInputFrame(obj);
         input_frame  = replaceFrameNum(input_frame,1,atlasFrames.AtlasInput(obj));
       else
@@ -352,7 +352,7 @@ classdef Atlas < TimeSteppingRigidBodyManipulator & Biped
     end
   end
 
-  properties (SetAccess = protected, GetAccess = public)
+  properties (SetAccess = public, GetAccess = public)
     x0
     hand_right = 0;
     hand_right_kind = 'none';
@@ -368,6 +368,7 @@ classdef Atlas < TimeSteppingRigidBodyManipulator & Biped
     left_full_right_toe_support
     atlas_version = [];
     external_force = 0; % if nonzero, body id where force is being exerted
+    has_force_element=false;
   end
 
   properties
