@@ -81,6 +81,15 @@ const DrakeJoint& RigidBody::getJoint() const
   }
 }
 
+bool RigidBody::hasJoint() const
+{
+  if (joint){
+    return true;
+  }
+
+  return false;
+}
+
 bool RigidBody::hasParent() const {
   return parent !=nullptr;
 }

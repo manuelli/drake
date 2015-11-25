@@ -36,6 +36,7 @@ public:
 
   void setJoint(std::unique_ptr<DrakeJoint> joint);
   const DrakeJoint& getJoint() const;
+  bool hasJoint() const;
 
   bool hasParent() const;
 
