@@ -1820,7 +1820,13 @@ classdef RigidBodyManipulator < Manipulator
       [phi0,~,~,~,~,~,~,~,~,D0] = obj.contactConstraints(x0(1:nq),false,active_collision_options);
 
       % total number of contact forces (normal + frictional)
-      nz = length(phi0) + size(cell2mat(D0'),1);
+      nz = length(phi0) + size(cell2mat(D0),1);
+      
+      if (nz>0)
+        warning('Drake::RigidBodyManipulator::FixedPointAssumesActiveContacts','This current implementation of findFixedPoint assumes that all contact constraints will be active at the solution.');
+        % the real implementation should have the complementarity
+        % constraints imposed instead
+      end
 
       z0 = zeros(nz,1);
       q0 = x0(1:nq);
@@ -1858,7 +1864,7 @@ classdef RigidBodyManipulator < Manipulator
 
       function stop=drawme(quz,optimValues,state)
         stop=false;
-        v.draw(0,[quz(1:nq); zeros(nv,1)]);
+        v.drawWrapper(0,[quz(1:nq); zeros(nv,1)]);
       end
 
       function [c,ceq,GC,GCeq] = mycon(quz)
@@ -1873,7 +1879,7 @@ classdef RigidBodyManipulator < Manipulator
           [phiC,normal,d,xA,xB,idxA,idxB,mu,n,D,dn,dD] = obj.contactConstraints(q,false,active_collision_options);
 
           % construct J such that J'*z is the contact force vector in joint
-          J = [n;cell2mat(D')];
+          J = [n;cell2mat(D)];
           % similarly, construct dJz
           dJ = zeros(numel(J),nq);
           J_idx = reshape(1:numel(J),size(J,1),size(J,2));
