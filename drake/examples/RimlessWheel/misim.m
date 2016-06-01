@@ -1,4 +1,4 @@
-function contactLinearization
+function misim
 
 options.floating = true;
 options.twoD = true;
@@ -7,15 +7,23 @@ w = warning('off','Drake:RigidBody:SimplifiedCollisionGeometry');
 p = TimeSteppingRigidBodyManipulator('RimlessWheel.urdf',.01,options);
 warning(w);
 
-options.visualize = true;
-x0 = [0;cos(pi/8);pi/8;zeros(3,1)];
+%options.visualize = true;
+%x0 = [0;cos(pi/8);pi/8;zeros(3,1)];
 %x0 = p.findFixedPoint(randn(6,1),[],options);
+
+x0 = p.resolveConstraints([0;1+rand;randn;5*rand;randn;5*rand]);
+qtraj = misim(getManipulator(p),x0,.02,200);
 
 v = p.constructVisualizer();
 v.axis = [-2.5 2.5 -.1 3];
-v.drawWrapper(0,x0);
+v.playback(qtraj);
 
-%phi = p.contactConstraints(x0)
+return;
+
+[H,C,B] = p.manipulatorDynamics(x0(1:3),x0(4:6));
+
+[phiC,normal,d,xA,xB,idxA,idxB,mu,n,D,dn,dD] = p.contactConstraints(x0);
+J = [n;cell2mat(D)]
 
 % draw vector field
 [theta,thetadot] = meshgrid(linspace(0,pi/4,22),1.5*linspace(-1,1,21));
