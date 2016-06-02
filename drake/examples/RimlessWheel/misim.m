@@ -12,11 +12,11 @@ warning(w);
 %x0 = p.findFixedPoint(randn(6,1),[],options);
 
 x0 = p.resolveConstraints([0;1+rand;randn;5*rand;randn;5*rand]);
-qtraj = misim(getManipulator(p),x0,.02,200);
+xtraj = misim(getManipulator(p),x0,.02,200);
 
 v = p.constructVisualizer();
 v.axis = [-2.5 2.5 -.1 3];
-v.playback(qtraj);
+v.playback(xtraj);
 
 return;
 

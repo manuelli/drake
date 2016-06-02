@@ -32,7 +32,7 @@ nonslide_lb_inds = nonpen_ub_inds(end)+(1:nc*nd);
 nonslide_ub_inds = nonslide_lb_inds(end)+(1:nc*nd);
 num_constraints = nonslide_ub_inds(end);
 
-bigM = 1e3;
+bigM = 1e2;
 
 % setup model
 model.vtype(lambda_inds) = 'B';
@@ -67,7 +67,7 @@ model.rhs(nonslide_ub_inds) = bigM;
 
 params.outputflag = 0;  % silent output
 
-qq = repmat(q,1,N+1);
+xx = repmat(double(x0),1,N+1);
 
 for i=1:N
   [H,C] = manipulatorDynamics(obj,q,v);
@@ -88,14 +88,16 @@ for i=1:N
   model.A(nonslide_ub_inds,vn_inds) = d;
   
   result = gurobi(model,params);
+%  [q',v']
 %  lambda = result.x(lambda_inds)'
 %  zn = result.x(zn_inds)'
+%  zf = result.x(zf_inds)'
   v = result.x(vn_inds);
   q = q+h*v;
   
-  qq(:,i+1)=q;
+  xx(:,i+1)=[q;v];
 %  keyboard
 end
 
-traj = DTTrajectory(h*(0:N),qq);
-traj = setOutputFrame(traj,getPositionFrame(obj));
+traj = DTTrajectory(h*(0:N),xx);
+traj = setOutputFrame(traj,getStateFrame(obj));
