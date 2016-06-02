@@ -60,7 +60,7 @@ model.A(no_tangent_force_ub_inds,lambda_inds) = -eye(nc*nd)*bigM;
 
 model.A(nonpen_ub_inds,lambda_inds) = eye(nc)*bigM;
 
-model.A(nonslide_lb_inds,lambda_inds) = -eye(nc*nd)*bigM;
+model.A(nonslide_lb_inds,lambda_inds) = -eye(nc*nd)*bigM;  % ah.  this is wrong!  there aren't nc*nd lambdas!
 model.rhs(nonslide_lb_inds) = -bigM;
 model.A(nonslide_ub_inds,lambda_inds) = eye(nc*nd)*bigM;
 model.rhs(nonslide_ub_inds) = bigM;
