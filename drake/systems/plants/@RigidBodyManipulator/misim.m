@@ -85,16 +85,16 @@ model.rhs(neg_slide_force_lb_inds) = -bigM;
 model.A(neg_slide_force_ub_inds,normal_force_inds) = -mu*repmat(eye(nc),nd,1);
 model.A(neg_slide_force_ub_inds,friction_force_inds) = eye(nc*nd);
 % rhs = 0 already
+ 
+ 
+% contact_ind = 2;
+% contact_constraint_inds = [nonslide_lb_inds(contact_ind),nonslide_ub_inds(contact_ind),pos_slide_force_lb_inds(contact_ind),pos_slide_force_ub_inds(contact_ind),neg_slide_force_lb_inds(contact_ind),neg_slide_force_ub_inds(contact_ind)];
+% contact_var_inds = [normal_force_inds(contact_ind),friction_force_inds(contact_ind),binary_normal_inds(contact_ind),binary_pos_slide_inds(contact_ind),binary_neg_slide_inds(contact_ind)];
+% syms xn yn tn real;
+% syms zn zf bnorm bpos bneg real;  x=[xn;yn;tn;zn;zf;bnorm;bpos;bneg];
 
 
-contact_ind = 2;
-contact_constraint_inds = [nonslide_lb_inds(contact_ind),nonslide_ub_inds(contact_ind),pos_slide_force_lb_inds(contact_ind),pos_slide_force_ub_inds(contact_ind),neg_slide_force_lb_inds(contact_ind),neg_slide_force_ub_inds(contact_ind)];
-contact_var_inds = [normal_force_inds(contact_ind),friction_force_inds(contact_ind),binary_normal_inds(contact_ind),binary_pos_slide_inds(contact_ind),binary_neg_slide_inds(contact_ind)];
-syms xn yn tn real;
-syms zn zf bnorm bpos bneg real;  x=[xn;yn;tn;zn;zf;bnorm;bpos;bneg];
-
-
-params.outputflag = 1; %0;  % silent output
+params.outputflag = 0;  % silent output
 
 xx = repmat(double(x0),1,N+1);
 
@@ -116,25 +116,25 @@ for i=1:N
   model.A(nonslide_lb_inds,vn_inds) = d;
   model.A(nonslide_ub_inds,vn_inds) = d;
   
-  % for debugging
-  bnorm = (phi<.1);
-  bpos = zeros(nc*nd,1);
-  bneg = zeros(nc*nd,1);
-  model2 = model;
-  model2.rhs = -model.A(:,[binary_normal_inds,binary_pos_slide_inds,binary_neg_slide_inds])*[bnorm;bpos;bneg];
-  model2.A(:,[binary_normal_inds,binary_pos_slide_inds,binary_neg_slide_inds])=[];
-  model2.vtype([binary_normal_inds,binary_pos_slide_inds,binary_neg_slide_inds])=[];
-  model2.obj([binary_normal_inds,binary_pos_slide_inds,binary_neg_slide_inds])=[];
-  model2.lb([binary_normal_inds,binary_pos_slide_inds,binary_neg_slide_inds])=[];
-  model2.ub([binary_normal_inds,binary_pos_slide_inds,binary_neg_slide_inds])=[];
-  % end debugging
+%   % for debugging
+%   bnorm = (phi<.1);
+%   bpos = zeros(nc*nd,1);
+%   bneg = zeros(nc*nd,1);
+%   model2 = model;
+%   model2.rhs = -model.A(:,[binary_normal_inds,binary_pos_slide_inds,binary_neg_slide_inds])*[bnorm;bpos;bneg];
+%   model2.A(:,[binary_normal_inds,binary_pos_slide_inds,binary_neg_slide_inds])=[];
+%   model2.vtype([binary_normal_inds,binary_pos_slide_inds,binary_neg_slide_inds])=[];
+%   model2.obj([binary_normal_inds,binary_pos_slide_inds,binary_neg_slide_inds])=[];
+%   model2.lb([binary_normal_inds,binary_pos_slide_inds,binary_neg_slide_inds])=[];
+%   model2.ub([binary_normal_inds,binary_pos_slide_inds,binary_neg_slide_inds])=[];
+%   % end debugging
   
   
   result = gurobi(model,params);
 %  [q',v']
-  contact = [result.x(binary_normal_inds)';
-    result.x(binary_pos_slide_inds)';
-    result.x(binary_neg_slide_inds)']
+%   contact = [result.x(binary_normal_inds)';
+%     result.x(binary_pos_slide_inds)';
+%     result.x(binary_neg_slide_inds)']
 %  zn = result.x(zn_inds)'
 %  zf = result.x(zf_inds)'
   v = result.x(vn_inds);
