@@ -1,4 +1,4 @@
-function traj = misim(obj,x0,h,N,mu)
+function traj = misim(obj,x0,h,N,mu,controller,viz)
 % quick demo of mixed-integer-based simulation through contact
 % todo: include control inputs (current sets u=0)
 % todo: work this into a proper time-stepping system
@@ -97,17 +97,20 @@ model.A(neg_slide_force_ub_inds,friction_force_inds) = eye(nc*nd);
 params.outputflag = 0;  % silent output
 
 xx = repmat(double(x0),1,N+1);
-viz = obj.constructVisualizer();
+u = zeros(getNumInputs(obj),1);
 
 for i=1:N
-  [H,C] = manipulatorDynamics(obj,q,v);
+  [H,C,B] = manipulatorDynamics(obj,q,v);
   [phi,~,~,~,~,~,~,~,n,D] = obj.contactConstraints(q,false);
+  if (nargin>5) 
+    u = controller.output(h*i,[],[q;v]);
+  end
   d = cell2mat(D(1:nd));
   
   model.A(dynamic_inds,vn_inds) = H/h;
   model.A(dynamic_inds,normal_force_inds) = -n';
   model.A(dynamic_inds,friction_force_inds) = -d';
-  model.rhs(dynamic_inds) = H*v/h - C; 
+  model.rhs(dynamic_inds) = H*v/h - C + B*u; 
 
   model.A(nonpen_lb_inds,vn_inds) = h*n;
   model.rhs(nonpen_lb_inds) = -phi;
@@ -140,7 +143,9 @@ for i=1:N
 %  zf = result.x(zf_inds)'
   v = result.x(vn_inds);
   q = q+h*v;
-  viz.drawWrapper(0,q); %pause
+  if (nargin>6)
+    viz.drawWrapper(i*h,q); 
+  end
   
   xx(:,i+1)=[q;v];
 %  keyboard
