@@ -37,7 +37,7 @@ neg_slide_force_lb_inds = pos_slide_force_ub_inds(end)+(1:nc*nd);
 neg_slide_force_ub_inds = neg_slide_force_lb_inds(end)+(1:nc*nd);
 num_constraints = neg_slide_force_ub_inds(end);
 
-bigM = 5e2;
+bigM = 1e3;
 
 % setup model
 model.vtype = repmat('C',num_vars,1);
@@ -57,7 +57,7 @@ model.A(no_normal_force_ub_inds,normal_force_inds) = eye(nc);
 model.A(no_normal_force_ub_inds,binary_normal_inds) = -eye(nc)*bigM;
 % rhs = 0 already
 
-%% phi + h*n*vn <= binary_normal*bigM
+%% 0 <= phi + h*n*vn <= binary_normal*bigM
 model.A(nonpen_ub_inds,binary_normal_inds) = eye(nc)*bigM;
 
 %% -binary_neg_slide*bigM <= dk*vn <= binary_pos_slide*bigM 
@@ -97,6 +97,7 @@ model.A(neg_slide_force_ub_inds,friction_force_inds) = eye(nc*nd);
 params.outputflag = 0;  % silent output
 
 xx = repmat(double(x0),1,N+1);
+viz = obj.constructVisualizer();
 
 for i=1:N
   [H,C] = manipulatorDynamics(obj,q,v);
@@ -139,6 +140,7 @@ for i=1:N
 %  zf = result.x(zf_inds)'
   v = result.x(vn_inds);
   q = q+h*v;
+  viz.drawWrapper(0,q); %pause
   
   xx(:,i+1)=[q;v];
 %  keyboard
