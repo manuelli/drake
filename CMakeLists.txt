@@ -259,8 +259,8 @@ set(xfoil_GIT_TAG fde0a9368dd451c93604051fc5704e120073800c)
 set(xfoil_IS_PUBLIC TRUE)
 
 # and now for the examples
-set(LittleDog_GIT_REPOSITORY https://github.com/RobotLocomotion/LittleDog.git)
-set(LittleDog_GIT_TAG b1e2740a183afdcb8c27bbdee461b8ada1c3550e)
+set(LittleDog_GIT_REPOSITORY https://github.com/RussTedrake/LittleDog.git)
+set(LittleDog_GIT_TAG 54b259b0ddf1a88dd8edb198a303597cb87d9cb0)
 
 find_program(MAKE_EXECUTABLE make)
 if(NOT MAKE_EXECUTABLE)

@@ -1785,7 +1785,7 @@ classdef RigidBodyManipulator < Manipulator
       [varargout{:}] = pdcontrol@Manipulator(sys,Kp,Kd,index);
     end
 
-    function [xstar,ustar,success] = findFixedPoint(obj,x0,u0,options)
+    function [xstar,ustar,zstar,success] = findFixedPoint(obj,x0,u0,options)
       if (nargin<2 || isempty(x0))
         x0 = Point(obj.getStateFrame());
       elseif ~isa(x0,'Point')
@@ -1832,7 +1832,7 @@ classdef RigidBodyManipulator < Manipulator
       q0 = x0(1:nq);
 
       problem.x0 = [q0;u0;z0];
-      problem.objective = @(quz) 0; % feasibility problem
+      problem.objective = @(quz) [quz-problem.x0]'*[quz-problem.x0]; % feasibility problem
       problem.nonlcon = @(quz) mycon(quz);
       problem.solver = 'fmincon';
 
