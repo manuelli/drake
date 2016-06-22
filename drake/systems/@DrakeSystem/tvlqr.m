@@ -164,10 +164,10 @@ end
 
 % udtraj adds terms so that the cost is (ubar - ubar_d)'*R{1}*(ubar - ubar_d) + (ubar - ubar_d)'*R{2}. @default 0
 if isfield(options,'udtraj')
-  typecheck(udtraj,'Trajectory');
+  typecheck(options.udtraj,'Trajectory');
   options.udtraj = options.udtraj.inFrame(oframe);
   
-  R{3} = R{3} + options.udtraj'*R{1}*option.udtraj - options.udtraj'*R{2};
+  R{3} = R{3} + options.udtraj'*R{1}*options.udtraj - options.udtraj'*R{2};
   R{2} = R{2} - 2*R{2}*options.udtraj;
 end
 
