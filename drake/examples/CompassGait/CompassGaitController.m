@@ -14,6 +14,7 @@ classdef CompassGaitController < DrakeSystem
     R; % cost on controlInput
     Qf; % final cost for LQR
     tickCounter = 0;
+    controlBasedOnSensedMode = false;
   end
   
   methods 
@@ -92,14 +93,97 @@ classdef CompassGaitController < DrakeSystem
       idx = tmp(end);
     end
 
+    function [idxLowerBound, idxUpperBound] = getCurrentTrajectoryInterval(obj,t)
+      tmp = find(obj.trajTimes <= t);
+      idxLowerBound = tmp(end);
+
+      idxUpperBound = -1; % should never be returned;
+      tmp = find(obj.trajTimes >= t);
+      if isempty(tmp)
+        idxUpperBound = length(obj.trajTimes);
+      else
+        idxUpperBound = tmp(1);
+      end
+    end
+
+    function [t_plan, idx] = getClosestPlanTimeInSameMode(obj, t,x)
+
+      idx = obj.getCurrentTrajectoryIdx(t);
+      sensedMode = x(1);
+      tmp = obj.ytraj_des.eval(t);
+      planMode = tmp(1);
+
+
+      % if the sensed and planned modes agree then everything is fine, there is nothing to do
+      if (sensedMode == planMode)
+        t_plan = t;
+        return;
+      end
+
+      [idxLowerBound, idxUpperBound] = obj.getCurrentTrajectoryInterval(t);
+      distanceToLower = abs(obj.trajTimes(idxLowerBound) - t);
+      distanceToUpper = abs(obj.trajTimes(idxUpperBound) - t);
+
+      % initialize variables
+      t_plan = -1;
+      idx = -1;
+      tGuard = -1;
+
+      if (distanceToLower <= distanceToUpper)
+        % in this case we entered the new hybrid mode early, so go back to the previous one
+        tGuard = obj.trajTimes(idxLowerBound);
+        idx = idxLowerBound;
+      else
+        tGuard = obj.trajTimes(idxUpperBound);
+        idx = idxUpperBound;
+      end
+
+      tGuardPlus = obj.clipToPlanTimeLimits(tGuard + eps);
+      tGuardMinus = obj.clipToPlanTimeLimits(tGuard - eps);
+
+      tmp = obj.ytraj_des.eval(tGuardPlus);
+      modePlus = tmp(1);
+
+      tmp = obj.ytraj_des.eval(tGuardMinus);
+      modePlus = tmp(1);
+
+      
+
+
+      % see if our mode matches that before or after the guard
+      if (sensedMode == modePlus)
+        t_plan = tGuardPlus;
+      else
+        t_plan = tGuardMinus;
+      end
+
+      % do the adjuste
+      disp('sensed and plan mode disagreed')
+      t
+      t_plan
+      sensedMode
+      planMode
+      
+    end
+
     function xcont = extractCtsStateFromFullState(obj, x)
       xcont = x(1+obj.numDiscStates:obj.numStates);
     end
 
 
     function u = controlInputFromPlantState(obj,t,x)
-      modeIdx = x(1);
-      idx = obj.getCurrentTrajectoryIdx(t);
+      modeIdx = 0;
+      idx = 0;
+
+      if obj.controlBasedOnSensedMode
+        modeIdx = x(1);
+        [t,idx] = obj.getClosestPlanTimeInSameMode(t,x);
+      else % this just means do everything according to the plan . . . 
+        yPlan = obj.ytraj_des.eval(t);
+        modeIdx = yPlan(1);
+        idx = obj.getCurrentTrajectoryIdx(t);
+      end
+
       plantModel = obj.compassGaitPlant.modes{modeIdx};
       controller = obj.lqrControllers{idx};
 
@@ -115,8 +199,18 @@ classdef CompassGaitController < DrakeSystem
       u = uInPlantFrame;
     end
 
-
+    function t = clipToPlanTimeLimits(obj,t)
+      t = CompassGaitController.clip(t,obj.ytraj_des.tspan(1), obj.ytraj_des.tspan(2));
+    end
     
   end 
+
+  methods(Static)
+
+    function x = clip(x,minVal,maxVal)
+      x = min(x,maxVal);
+      x = max(x,minVal);
+    end
+  end
   
 end
