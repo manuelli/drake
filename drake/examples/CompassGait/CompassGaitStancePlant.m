@@ -18,6 +18,8 @@ classdef CompassGaitStancePlant < Manipulator
       end
       
       obj = obj.setInputLimits(-50,50);
+      inputFrame = CoordinateFrame('CompassGaitStancePlantInputFrame', 1, 'u', {'u'});
+      obj = obj.setInputFrame(inputFrame);
       obj = setOutputFrame(obj,getStateFrame(obj));
     end
     
