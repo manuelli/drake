@@ -5,9 +5,12 @@ classdef CompassGaitVisualizer < Visualizer
   end
   
   methods 
-    function obj = CompassGaitVisualizer(plant)
-      typecheck(plant,'CompassGaitPlant');
-      obj = obj@Visualizer(plant.getOutputFrame);
+    function obj = CompassGaitVisualizer(plant, plantOutputFrame)
+      % typecheck(plant,'CompassGaitPlant');
+      if nargin < 2
+        plantOutputFrame = plant.getOutputFrame;
+      end
+      obj = obj@Visualizer(plantOutputFrame);
       obj.a = plant.a;
       obj.b = plant.b;
       obj.l = plant.l;
@@ -17,8 +20,14 @@ classdef CompassGaitVisualizer < Visualizer
     function draw(obj,t,x)
 %      m=mod(x(1),2); % left or right stance
 
-      q = x(1:2);
-      qd = x(3:4);
+      % handle case where x may include the hybrid mode        
+      if (length(x) == 4)
+        q = x(1:2);
+        qd = x(3:4);
+      else
+        q = x(2:3);
+        qd = x(4:5);
+      end
 
       a = obj.a;  b = obj.b; l = obj.l; 
       
