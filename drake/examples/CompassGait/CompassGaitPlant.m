@@ -8,15 +8,18 @@ classdef CompassGaitPlant < HybridDrakeSystem
     g = 9.8;
     l;
     gamma = 3*pi/180;
+    useFixedOutputCoords = false;
   end
   
   methods 
     function obj = CompassGaitPlant()
-      obj = obj@HybridDrakeSystem(1,4);
+      obj = obj@HybridDrakeSystem(1,6);
       obj.l=obj.a+obj.b;
       p = CompassGaitStancePlant(obj.m,obj.mh,obj.a,obj.b,obj.l,obj.g);
       obj = setInputFrame(obj,p.getInputFrame);
-      obj = setOutputFrame(obj,p.getOutputFrame);
+      outputFrame = CoordinateFrame('CompassGaitPlantOutput', 6, 'x', {'mode','theta1','theta2','theta1_dot','theta2_dot','u'});
+      obj = obj.setOutputFrame(outputFrame);
+%       obj = setOutputFrame(obj,p.getOutputFrame);
       
       obj = obj.addMode(p);
       obj = obj.addMode(p);
@@ -24,6 +27,7 @@ classdef CompassGaitPlant < HybridDrakeSystem
       obj = addTransition(obj,1,andGuards(obj,@footCollisionGuard1,@footCollisionGuard2),@collisionDynamics,false,true);
       obj = addTransition(obj,2,andGuards(obj,@footCollisionGuard1,@footCollisionGuard2),@collisionDynamics,false,true);
 
+      % obj = obj.setOutputFrame(obj.getStateFrame)
       %      obj.ode_options = odeset('InitialStep',1e-3, 'Refine',1,'MaxStep',0.02);
       obj = setSimulinkParam(obj,'InitialStep','1e-3','MaxStep','0.05');
       obj = setInputLimits(obj,-50,50);
@@ -66,6 +70,27 @@ classdef CompassGaitPlant < HybridDrakeSystem
         dxp = [zeros(4,2),dxpdxm,zeros(4,1)];
       end
       status = 0;
+    end
+
+    function y = output(obj,t,x,u)
+      y = [x;u];
+
+      % switch the order if that is specified
+      if (obj.useFixedOutputCoords)
+        swingLegIdx = 2;
+        stanceLegIdx = 3;
+
+        if (x(1)==2)
+          swingLegIdx = 3;
+          stanceLegIdx = 2;
+        end
+
+        y(swingLegIdx) = x(2);
+        y(stanceLegIdx) = x(3);
+        y(swingLegIdx+2) = x(4);
+        y(stanceLegIdx+2) = x(5);
+        
+      end        
     end
     
   end
