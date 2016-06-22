@@ -9,7 +9,7 @@ classdef (InferiorClasses = {?DrakeSystem}) HybridDrakeSystem < DrakeSystem
     mode_names={};
 
     % transitions:
-    target_mode={}; % target_mode{i}(j) describes the target for the jth transition out of the ith mode
+    target_mode={}; % target_mode{i}(j) describes the target for the jth transition out of the ith moder
     guard={};       % guard{i}{j} is for the jth transition from the ith mode
     transition={};      % transition{i}{j} is for the jth transition from the ith mode
   end
@@ -42,13 +42,13 @@ classdef (InferiorClasses = {?DrakeSystem}) HybridDrakeSystem < DrakeSystem
         end
         mode_sys = cascade(tf,mode_sys);
       end
-      if (obj.getNumOutputs>0 && obj.getOutputFrame ~= mode_sys.getOutputFrame)
-        tf = findTransform(mode_sys.getOutputFrame,obj.getOutputFrame);
-        if (isempty(tf))
-          error(['Output frame ' mode_sys.getOutputFrame().name, ' does not match output frame ', obj.getOutputFrame().name, ' and I cannot find a CoordinateTransform to make the connection']);
-        end
-        mode_sys = cascade(mode_sys,tf);
-      end
+      % if (obj.getNumOutputs>0 && obj.getOutputFrame ~= mode_sys.getOutputFrame)
+      %   tf = findTransform(mode_sys.getOutputFrame,obj.getOutputFrame);
+      %   if (isempty(tf))
+      %     error(['Output frame ' mode_sys.getOutputFrame().name, ' does not match output frame ', obj.getOutputFrame().name, ' and I cannot find a CoordinateTransform to make the connection']);
+      %   end
+      %   mode_sys = cascade(mode_sys,tf);
+      % end
 
       if (getNumZeroCrossings(mode_sys)>0)
         obj = setNumZeroCrossings(obj,max(getNumZeroCrossings(obj),getNumZeroCrossings(mode_sys)));
@@ -239,9 +239,10 @@ classdef (InferiorClasses = {?DrakeSystem}) HybridDrakeSystem < DrakeSystem
     end
 
     function y = output(obj,t,x,u)
-      m = x(1); nX = getNumStates(obj.modes{m});
-      if (nX>0) xm = x(1+(1:nX)); else xm=[]; end
-      y = output(obj.modes{m},t,xm,u);
+      % m = x(1); nX = getNumStates(obj.modes{m});
+      % if (nX>0) xm = x(1+(1:nX)); else xm=[]; end
+      % y = output(obj.modes{m},t,xm,u);
+      y = x;
     end
 
     function zcs = zeroCrossings(obj,t,x,u)
@@ -314,9 +315,9 @@ classdef (InferiorClasses = {?DrakeSystem}) HybridDrakeSystem < DrakeSystem
 
     function obj = setOutputFrame(obj,frame)
       obj = setOutputFrame@DrakeSystem(obj,frame);
-      for i=1:length(obj.modes)
-        obj.modes{i}=setOutputFrame(obj.modes{i},frame);
-      end
+      % for i=1:length(obj.modes)
+      %   obj.modes{i}=setOutputFrame(obj.modes{i},frame);
+      % end
     end
 
     function obj = setInputFrame(obj,frame)
@@ -327,12 +328,14 @@ classdef (InferiorClasses = {?DrakeSystem}) HybridDrakeSystem < DrakeSystem
     end
 
     function sys = feedback(sys1,sys2)
-      warning('feedback combinations with hybrid systems not implemented yet.  kicking out to a simulink combination.');
-      sys = feedback(SimulinkModel(sys1.getModel()),sys2);
+      warning('Trying to do this with feedback@DynamicalSystem, not sure if it will work');
+      % sys = feedback(SimulinkModel(sys1.getModel()),sys2);
+      sys = feedback@DynamicalSystem(sys1, sys2);
     end
     function sys = cascade(sys1,sys2)
       warning('cascade combinations with hybrid systems not implemented yet.  kicking out to a simulink combination.');
       sys = cascade(SimulinkModel(sys1.getModel()),sys2);
+
     end
   end
 
