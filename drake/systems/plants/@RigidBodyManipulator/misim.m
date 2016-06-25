@@ -1,8 +1,15 @@
-function traj = misim(obj,x0,h,N,mu,controller,viz)
+function [traj, output] = misim(obj,x0,h,N,mu,controller,viz)
 % quick demo of mixed-integer-based simulation through contact
 % todo: include control inputs (current sets u=0)
 % todo: work this into a proper time-stepping system
 % todo: add friction cone (currently assumes infinite friction)
+
+
+% @param h is the timestep dt
+% @param N number of timesteps to simulate
+% @mu friction coefficient
+
+output = struct();
 
 nq = getNumPositions(obj);
 nv = getNumVelocities(obj);
@@ -57,10 +64,16 @@ model.A(no_normal_force_ub_inds,normal_force_inds) = eye(nc);
 model.A(no_normal_force_ub_inds,binary_normal_inds) = -eye(nc)*bigM;
 % rhs = 0 already
 
+
 %% 0 <= phi + h*n*vn <= binary_normal*bigM
+% The binary variables should only be active when phi is 0 or negative?
 model.A(nonpen_ub_inds,binary_normal_inds) = eye(nc)*bigM;
 
+
+
 %% -binary_neg_slide*bigM <= dk*vn <= binary_pos_slide*bigM 
+
+% this has something to do with non-sliding constraint
 model.A(nonslide_lb_inds,binary_neg_slide_inds) = eye(nc*nd)*bigM;  
 % rhs = 0 already
 model.A(nonslide_ub_inds,binary_pos_slide_inds) = -eye(nc*nd)*bigM;
@@ -96,8 +109,11 @@ model.A(neg_slide_force_ub_inds,friction_force_inds) = eye(nc*nd);
 
 params.outputflag = 0;  % silent output
 
+alphaValues = zeros(num_vars,1);
+alphaValues = repmat(alphaValues, 1,N+1);
 xx = repmat(double(x0),1,N+1);
 u = zeros(getNumInputs(obj),1);
+uValues = repmat(u,1,N+1);
 
 for i=1:N
   [H,C,B] = manipulatorDynamics(obj,q,v);
@@ -148,8 +164,23 @@ for i=1:N
   end
   
   xx(:,i+1)=[q;v];
+  alphaValues(:,i+1) = result.x;
+  uValues(:,i+1) = u;
 %  keyboard
 end
 
 traj = DTTrajectory(h*(0:N),xx);
 traj = setOutputFrame(traj,getStateFrame(obj));
+
+% record all the debug output
+output.alphaTraj = DTTrajectory(h*(0:N),alphaValues);
+output.uTraj = DTTrajectory(h*(0:N),uValues);
+
+output.traj = traj;
+output.vn_inds = vn_inds;
+output.normal_force_inds = normal_force_inds;
+output.friction_force_inds = friction_force_inds;
+output.binary_normal_inds = binary_normal_inds;
+output.binary_pos_slide_inds = binary_pos_slide_inds;
+output.binary_neg_slide_inds = binary_neg_slide_inds;
+output.num_vars = num_vars;
