@@ -53,7 +53,6 @@ classdef AcrobotController < handle
       
 
       if(~obj.useStanceController(t,x))
-        y
         return
       end
 
@@ -62,7 +61,6 @@ classdef AcrobotController < handle
       uLQR = min(uLQR,obj.u_max);
       uLQR = max(uLQR,-obj.u_max);
       y = uLQR;
-      y
     end
 
     function u = getLQRBalanceControlInput(obj,t,x)
@@ -75,7 +73,6 @@ classdef AcrobotController < handle
     function [y, phiC] = isInContact(obj,x)
       q = x(1:obj.nq);
       phiC = obj.plant.contactConstraints(q,false);
-      phiC
 
       % check to see whether we are in contact or not
       y = false;
@@ -90,6 +87,12 @@ classdef AcrobotController < handle
     function val = useStanceController(obj,t,x)
       val = false;
       [y,phiC] = obj.isInContact(x);
+
+      if ((obj.firstContactTime < 0) && y)
+        obj.firstContactTime = t;
+      end
+
+
       % once the stance controller is activated, just keep it on
       % this is a hack but works for now
       if obj.stanceControllerActive
@@ -97,10 +100,6 @@ classdef AcrobotController < handle
         return;
       end
       
-
-      if ((obj.firstContactTime < 0) && y)
-        obj.firstContactTime = t;
-      end
 
       if obj.options.activateEarly
         if (phiC < obj.options.activateEarlyPhi)
