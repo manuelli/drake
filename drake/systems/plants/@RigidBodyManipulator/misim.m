@@ -44,7 +44,12 @@ neg_slide_force_lb_inds = pos_slide_force_ub_inds(end)+(1:nc*nd);
 neg_slide_force_ub_inds = neg_slide_force_lb_inds(end)+(1:nc*nd);
 num_constraints = neg_slide_force_ub_inds(end);
 
-bigM = 1e3;
+% make sure we scale this with dt to avoid infeasibility problems
+% Impulse delivered at impact step is independent of dt. Since impulse
+% is I = F dt this means that F GROWS linearly with dt, so we must ensure that
+% we also increase M accordingly.
+% Note: h = dt in this notation
+bigM = (0.02/h)*(1e3);
 
 % setup model
 model.vtype = repmat('C',num_vars,1);
@@ -65,7 +70,7 @@ model.A(no_normal_force_ub_inds,binary_normal_inds) = -eye(nc)*bigM;
 % rhs = 0 already
 
 
-%% 0 <= phi + h*n*vn <= binary_normal*bigM
+%% 0 <= phi + h*n*vn <= (1-binary_normal)*bigM
 % The binary variables should only be active when phi is 0 or negative?
 model.A(nonpen_ub_inds,binary_normal_inds) = eye(nc)*bigM;
 
@@ -114,6 +119,11 @@ alphaValues = repmat(alphaValues, 1,N+1);
 xx = repmat(double(x0),1,N+1);
 u = zeros(getNumInputs(obj),1);
 uValues = repmat(u,1,N+1);
+JvnSingle = zeros(nc,1);
+JvnValues = repmat(JvnSingle, 1, N+1);
+
+vSingle = zeros(nv, 1);
+JTransposeF = repmat(vSingle, 1, N+1);
 
 for i=1:N
   [H,C,B] = manipulatorDynamics(obj,q,v);
@@ -151,6 +161,14 @@ for i=1:N
   
   
   result = gurobi(model,params);
+
+  % this keeps being empty, which I assume means an infeasible solve . . . ?
+  result.status;
+  if ~strcmp(result.status, 'OPTIMAL')
+    error('the problem is infeasible')
+    break;
+  end
+
 %  [q',v']
 %   contact = [result.x(binary_normal_inds)';
 %     result.x(binary_pos_slide_inds)';
@@ -166,15 +184,20 @@ for i=1:N
   xx(:,i+1)=[q;v];
   alphaValues(:,i+1) = result.x;
   uValues(:,i+1) = u;
+  JvnValues(:,i+1) = n*v; % encodes distance traveled by contact point this tick
+  JTransposeF(:,i+1) = n'*result.x(normal_force_inds) + d'*result.x(friction_force_inds);
 %  keyboard
 end
 
-traj = DTTrajectory(h*(0:N),xx);
+traj = PPTrajectory(pchip(h*(0:N),xx));
 traj = setOutputFrame(traj,getStateFrame(obj));
 
 % record all the debug output
-output.alphaTraj = DTTrajectory(h*(0:N),alphaValues);
-output.uTraj = DTTrajectory(h*(0:N),uValues);
+output.alphaTraj = PPTrajectory(pchip(h*(0:N),alphaValues));
+output.uTraj = PPTrajectory(pchip(h*(0:N),uValues));
+JTransposeFTraj = PPTrajectory(pchip(h*(0:N),JTransposeF));
+JvnTraj = PPTrajectory(pchip(h*(0:N),JvnValues));
+
 
 output.traj = traj;
 output.vn_inds = vn_inds;
@@ -184,3 +207,5 @@ output.binary_normal_inds = binary_normal_inds;
 output.binary_pos_slide_inds = binary_pos_slide_inds;
 output.binary_neg_slide_inds = binary_neg_slide_inds;
 output.num_vars = num_vars;
+output.JTransposeFTraj = JTransposeFTraj
+output.JvnTraj = JvnTraj
