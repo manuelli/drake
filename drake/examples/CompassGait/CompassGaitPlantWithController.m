@@ -4,8 +4,8 @@ classdef CompassGaitPlantWithController < CompassGaitPlant
   end
   
   methods 
-    function obj = CompassGaitPlantWithController()
-      obj = obj@CompassGaitPlant()
+    function obj = CompassGaitPlantWithController(gammaIn)
+      obj = obj@CompassGaitPlant(gammaIn);
     end
 
     function xdn = update(obj,t,x,u_in)
@@ -27,6 +27,7 @@ classdef CompassGaitPlantWithController < CompassGaitPlant
       y = output@CompassGaitPlant(obj,t,x,u_controller);
     end
 
+    % controller needs to implement step(t,x) and getCurrentControlInput(t,x)
     function obj = setController(obj, controller)
       obj.controller = controller;
     end 

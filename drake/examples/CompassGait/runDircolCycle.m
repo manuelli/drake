@@ -17,9 +17,11 @@ x1 = [-.326;.22;-.381;-1.1];
 tf = .713;
 xf = x0;
 
+% initial guess for timesteps
 t_init{1} = linspace(0,t1,N(1));
 t_init{2} = linspace(0,tf-t1,N(2));
 
+%initial guess for trajectories
 traj_init{1}.x0 = x0;
 traj_init{2}.x0 = x1;
 
@@ -36,7 +38,7 @@ tic
 [xtraj,utraj,z,F,info] = solveTraj(traj_opt,t_init,traj_init);
 toc
 if (nargout<1)
-  v = CompassGaitVisualizer(p);
+  v = CompassGaitVisualizer(p, xtraj.getOutputFrame);
   figure(1); clf;
   fnplt(utraj);
   
@@ -44,7 +46,7 @@ if (nargout<1)
   fnplt(xtraj,[2 4]);
   fnplt(xtraj,[3 5]);
   
-  playback(v,xtraj);
+  playback(v,xtraj, struct('slider', true));
   
 end
 end
