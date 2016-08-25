@@ -1,5 +1,5 @@
 r = CompassGaitPlant();
-s = CompassGaitPlantWithController();
+s = CompassGaitPlantWithController(r.gamma);
 % r.useFixedOutputCoords = true;
 x0 = r.getInitialState;
 T = 5;

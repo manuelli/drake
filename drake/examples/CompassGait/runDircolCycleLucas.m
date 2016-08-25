@@ -1,19 +1,30 @@
-function [p,utraj,xtraj,z,traj_opt, returnData]=runDircolCycleLucas(slope)
+function [p,utraj,xtraj,z,traj_opt, returnData]=runDircolCycleLucas(options)
 % from an initial balancing condition, take one step and return to the
 % balance upright.
 
 if nargin < 1
-  slope = 3;
+  options = struct();
 end
 
-gamma = slope*pi/180; % this is the ground height
+% setup the default options
+defaultOptions = struct();
+defaultOptions.numKnotPoints = 50;
+defaultOptions.slope = 0;
+defaultOptions.periodic = true;
+defaultOptions.u_const_across_transitions = true;
+defaultOptions.u_const_across_transitions_negate_sign = true;
+defaultOptions.plot = true;
+
+
+options = applyDefaults(options, defaultOptions);
+
+
+gamma = options.slope*pi/180; % this is the ground height
 p = CompassGaitPlant(gamma);
 
+% number of knot points in the optimization
+N = [options.numKnotPoints;options.numKnotPoints];
 
-N = [70;70];
-
-options.u_const_across_transitions = false;
-options.periodic = true;
 
 traj_opt = HybridTrajectoryOptimization(@DircolTrajectoryOptimization, p,[1;2],N,{[.2 .5],[.2 .5]},options);
 
@@ -29,13 +40,16 @@ t_init{2} = linspace(0,tf-t1,N(2));
 
 %initial guess for trajectories
 traj_init{1}.x0 = x0;
-traj_init{2}.x0 = x1;
+traj_init{2}.x0 = x0;
 
 % constraint at first knot point
 traj_opt = traj_opt.addModeStateConstraint(1,BoundingBoxConstraint([0;-inf(3,1)],[0;inf(3,1)]),1);
 
-% constraint at lost knot point of mode 1, i.e. right before transition
+% constraint at last knot point of mode 1, i.e. right before transition
 traj_opt = traj_opt.addModeStateConstraint(1,BoundingBoxConstraint([.11;-inf(3,1)],inf(4,1)),N(1));
+
+% traj_opt = traj_opt.addModeStateConstraint(1,BoundingBoxConstraint(-inf(4,1),[inf; -0.14; inf(2,1)]),N(1));
+
 
 traj_opt = traj_opt.addModeRunningCost(1,@cost);
 traj_opt = traj_opt.addModeRunningCost(2,@cost);
@@ -49,7 +63,7 @@ info
 
 
 toc
-if (nargout<1)
+if (options.plot)
   v = CompassGaitVisualizer(p, xtraj.getOutputFrame);
   figure(1); clf;
   fnplt(utraj);
@@ -62,7 +76,7 @@ if (nargout<1)
 end
 
 
-returnData = computePhasedTrajs(p, xtraj, utraj);
+returnData = struct();
 end
 
 function [g,dg] = cost(t,x,u);

@@ -14,7 +14,7 @@ classdef CompassGaitController < DrakeSystem
     R; % cost on controlInput
     Qf; % final cost for LQR
     tickCounter = 0;
-    controlBasedOnSensedMode = false;
+    controlBasedOnSensedMode = false
   end
   
   methods 

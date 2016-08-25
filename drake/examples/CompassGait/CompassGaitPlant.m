@@ -7,13 +7,23 @@ classdef CompassGaitPlant < HybridDrakeSystem
     b = 0.5;
     g = 9.8;
     l;
-    gamma = 3*pi/180;
+    gamma;
     useFixedOutputCoords = false;
   end
   
   methods 
-    function obj = CompassGaitPlant()
+    function obj = CompassGaitPlant(gammaIn)
+      
+      
+
+
       obj = obj@HybridDrakeSystem(1,6);
+      % allow passing in of ground slope
+      if (nargin > 0)
+        obj.gamma = gammaIn;
+      else
+        obj.gamma = 3*pi/180;
+      end
       obj.l=obj.a+obj.b;
       p = CompassGaitStancePlant(obj.m,obj.mh,obj.a,obj.b,obj.l,obj.g);
       obj = setInputFrame(obj,p.getInputFrame);
