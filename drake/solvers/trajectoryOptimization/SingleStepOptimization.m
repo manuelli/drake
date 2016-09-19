@@ -74,18 +74,21 @@ stanceLegSweepAngleConstraint = LinearConstraint(lb,ub,A);
 traj_opt = traj_opt.addConstraint(stanceLegSweepAngleConstraint, xinds);
 
 
+% add u constant across transitions constraint if it was specified
+if (options.u_const_across_transitions)
+  lb = 0;
+  ub = 0;
+  % they should be opposite signs since the torque in motor coordinates depends on 
+  % which is the stance leg
+  A = [1,1]; 
+  uConstConstraint = LinearConstraint(lb,ub,A);
 
+  uInitialIdx = traj_opt.u_inds(1,1);
+  uFinallIdx = traj_opt.u_inds(1,end);
 
-
-% constraint at last knot point of mode 1, i.e. right before transition
-% traj_opt = traj_opt.addModeStateConstraint(1,BoundingBoxConstraint([.11;-inf(3,1)],inf(4,1)),N(1));
-
-
-% traj_opt = traj_opt.addModeStateConstraint(1,BoundingBoxConstraint(-inf(4,1),[inf; -0.14; inf(2,1)]),N(1));
-
-% this may need to be adjusted. This is state constraint at final knot point
-% traj_opt = traj_opt.addStateConstraint(BoundingBoxConstraint([.11;-inf(3,1)],inf(4,1)),N);
-
+  uinds = [uInitialIdx, uFinallIdx];
+  traj_opt = traj_opt.addConstraint(uConstConstraint, uinds);
+end
 
 
 % add the running cost

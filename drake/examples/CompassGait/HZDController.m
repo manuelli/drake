@@ -5,7 +5,7 @@ classdef HZDController < SimpleController
     xPhaseTraj;
     uPhaseTraj;
     xdotTrajPhase;
-    theta1_idx = 2;
+    theta1_idx = 2; % note this assumes that mode is in x, i.e. x in R^5
     theta1dot_idx = 4;
     stanceIdx = 3;
     swingIdx = 2;
@@ -54,7 +54,7 @@ classdef HZDController < SimpleController
       % the units of these two thresholds are not really comparable
       hmu.breakingContactTimeThreshold = 0.05;
       hmu.makingContactGuardThreshold = 0.1;
-      hmu.applyDeadZoneController = true;
+      hmu.applyDeadZoneController = false;
       hmu.deadZoneControllerValue = 0; % this should be in the global coordinates, will be constant across both modes . . . 
       defaultOptions.hybridModeUncertainty = hmu;
 
@@ -69,7 +69,21 @@ classdef HZDController < SimpleController
       obj = obj.setupController();
     end
 
+    % be sure to support things that aren't hybrid trajectories
     function obj = setupController(obj)
+
+      % this means it is a regular trajectory and we don't need to do all the mess from below
+      if (~isa(obj.xtraj,'HybridTrajectory'))
+        [h,hDeriv,hDeriv2, xPhaseTrajTemp, uPhaseTrajTemp] = obj.compute_H_Trajectory(obj.xtraj, obj.utraj);
+        obj.hdTraj = h;
+        obj.hdTraj_deriv = hDeriv;
+        obj.hdTraj_dderiv = hDeriv2;
+        obj.uPhaseTraj = uPhaseTrajTemp;
+        obj.xPhaseTraj = xPhaseTrajTemp;
+        return;
+      end
+
+
       numTrajectories = length(obj.xtraj.traj);
       h_trajs = {};
       h_deriv_trajs = {};
@@ -77,6 +91,10 @@ classdef HZDController < SimpleController
       uPhaseTraj = {};
       xPhaseTraj = {};
 
+
+
+
+      % only need to do this stuff if it's a hybrid trajectory thing
       for i=1:numTrajectories
         traj = obj.xtraj.traj{i}.trajs{2}; % remove the 
         uTraj = obj.utraj.traj{i};
