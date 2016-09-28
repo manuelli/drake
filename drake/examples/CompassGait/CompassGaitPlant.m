@@ -52,6 +52,30 @@ classdef CompassGaitPlant < HybridDrakeSystem
       g = -x(1);   % theta_st >= 0
       dg = [0,-1,0,0,0,0];
     end
+
+
+    function toeHeight = computeToeHeight(obj, x)
+
+      if (size(x) == 4)
+        thetaSwing = x(1);
+        thetaStance = x(2);
+      else
+        thetaSwing = x(2);
+        thetaStance = x(3);
+      end
+
+      toeHeightRelativeToStanceFoot = obj.l*(cos(thetaStance) - cos(thetaSwing));
+
+      % positive is more to the right
+      xDisplacementRelativeToStanceFoot = obj.l*(-sin(thetaStance) + sin(thetaSwing));
+
+      % how much has the ground height changed relative to where stance foot is
+      groundSlope = -tan(obj.gamma);
+      groundHeightChangeFromStanceFoot = groundSlope * xDisplacementRelativeToStanceFoot;
+
+      % this is the height of the toe above (or below if negative) the ground
+      toeHeight = toeHeightRelativeToStanceFoot - groundHeightChangeFromStanceFoot;
+    end
       
     function [xp,mode,status,dxp] = collisionDynamics(obj,mode,t,xm,u)
       m=obj.m; mh=obj.mh; a=obj.a; b=obj.b; l=obj.l;
