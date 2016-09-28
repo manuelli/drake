@@ -57,6 +57,13 @@ classdef CompassGaitUtils
 
     end
 
+    function xOther = transformStateToOtherMode(obj, x)
+      xOther = 0*x;
+      xOther(1) = 3-x;
+
+      xOther(2:end)  = obj.swapMatrix*x(2:end);
+    end
+
 
     function u_global = transformControlInput(obj, modeVal, u)
       u_global = u;
@@ -84,6 +91,21 @@ classdef CompassGaitUtils
       H_global = H*obj.swapMatrixSmall';
       B_global = -B;
 
+    end
+  end
+
+  methods(Static)
+    function fell = doesTrajectoryFall(xtraj)
+      fell = false;
+
+      tBreaks = xtraj.getBreaks();
+      xGrid = xtraj.eval(tBreaks);
+
+      stanceAngle = xGrid(3,:);
+
+      if max(abs(stanceAngle)) > pi/2
+        fell = true;
+      end
     end
   end
 
