@@ -16,6 +16,7 @@ defaultOptions.slope = 0;
 defaultOptions.periodic = true;
 defaultOptions.u_const_across_transitions = true;
 defaultOptions.u_const_across_transitions_negate_sign = true;
+defaultOptions.stanceLegSweepAngleLowerBound = 0.2;
 defaultOptions.plot = true;
 
 
@@ -66,7 +67,7 @@ stanceLegFinalIdx = traj_opt.x_inds(stanceLegInStateVarIdx, end);
 
 xinds = [stanceLegInitialIdx, stanceLegFinalIdx];
 
-lb = 0.2;
+lb = options.stanceLegSweepAngleLowerBound;
 ub = Inf; % this is what controls the speed, is binding in general for flat ground optimization
 A = [1,-1];
 stanceLegSweepAngleConstraint = LinearConstraint(lb,ub,A);
@@ -150,16 +151,18 @@ end
 % snprint('snopt.out');
 tic
 [xtraj,utraj,z,F,info] = solveTraj(traj_opt,t_init,traj_init);
-info
+info % print out the info of the trajectory optimization, info = 1 is good.
 toc
 if (options.plot)
   v = CompassGaitVisualizer(p, xtraj.getOutputFrame);
   figure(1); clf;
   fnplt(utraj);
+  title('utraj');
   
   figure(2); clf; hold on;
   fnplt(xtraj,[1 3]);
   fnplt(xtraj,[2 4]);
+  title('xtraj');
   
   playback(v,xtraj, struct('slider', true));
 end
@@ -204,63 +207,5 @@ J=100*abs(dphidx*xdot0)./norm(dphidx)./norm(xdot0);
 end
 
 
-% compute trajectories in terms of stance leg angle
-function [xtrajPhase, utrajPhase] = phasedTraj(xtraj, utraj)
-
-swingIdx = 2;
-stanceIdx = 3;
-tGrid = xtraj.getBreaks();
-te = xtraj.te;
-tGrid = [tGrid, linspace(te - 0.05, te + 0.05, 100)];
-unique(tGrid);
-xGrid = xtraj.eval(tGrid);
-stanceGrid = xGrid(stanceIdx, :);
-uGrid = utraj.eval(tGrid);
-xtrajPhase = PPTrajectory(pchip(stanceGrid, xGrid));
-utrajPhase = PPTrajectory(pchip(stanceGrid, uGrid));
-
-
-end
-
-function [xdotTraj, xdot] = computeDynamicsTraj(plant, xtraj, utraj, tGrid)
-% tGrid = xtraj.getBreaks();
-tGrid = unique(tGrid);
-numTimes = length(tGrid);
-xdotGrid = zeros(4,numTimes);
-
-for i=1:numTimes
-  t = tGrid(i);
-  x = xtraj.eval(t);
-  u = utraj.eval(t);
-  xdot(:,i) = plant.dynamics(t,x,u);
-end
-
-xdotTraj = PPTrajectory(pchip(tGrid, xdot));
-end
-
-
-function phasedTrajs = computePhasedTrajs(plant, xtraj, utraj)
-swingIdx = 2;
-stanceIdx = 3;
-tGrid = xtraj.getBreaks();
-te = xtraj.te;
-tGrid = [tGrid, linspace(te - 0.05, te + 0.05, 100)];
-unique(tGrid);
-xGrid = xtraj.eval(tGrid);
-stanceGrid = xGrid(stanceIdx, :);
-uGrid = utraj.eval(tGrid);
-xtrajPhase = PPTrajectory(pchip(stanceGrid, xGrid));
-utrajPhase = PPTrajectory(pchip(stanceGrid, uGrid));
-
-[xdotTraj, xdotGrid] = computeDynamicsTraj(plant, xtraj, utraj, tGrid);
-xdotTrajPhase = PPTrajectory(pchip(stanceGrid, xdotGrid));
-
-
-phasedTrajs = struct();
-phasedTrajs.xtrajPhase = xtrajPhase;
-phasedTrajs.utrajPhase = utrajPhase;
-phasedTrajs.xdotTrajPhase = xdotTrajPhase;
-phasedTrajs.xdotTraj = xdotTraj;
-end
 
 
