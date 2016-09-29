@@ -53,7 +53,13 @@ classdef HZDController < SimpleController
       defaultOptions = struct();
       defaultOptions.Kp = 20;
       defaultOptions.dampingRatio = 1.0;
+
+      defaultOptions.applyUncertaintyControllerOnMakingContact = false;
+      defaultOptions.applyUncertaintyControllerOnBreakingContact = false;
       defaultOptions.applyDeadZoneController = false;
+      defaultOptions.applyWrongModeController = false;
+      % defaultOptions.applyMakingContactWrongModeController = false;
+      % defaultOptions.applyBreakingContactWrongModeController = false;
 
       hmu = struct();
 
@@ -62,10 +68,24 @@ classdef HZDController < SimpleController
       hmu.makingContactGuardThreshold = 0.1;
       hmu.makingContactToeHeightThreshold = 0.03;
       hmu.deadZoneControllerValue = 0; % this should be in the global coordinates, will be constant across both modes . . . 
-      defaultOptions.hybridModeUncertainty = hmu;
+      % defaultOptions.hybridModeUncertainty = hmu;
+
+      if isfield(options, 'hybridModeUncertainty')
+        options.hybridModeUncertainty = applyDefaults(options.hybridModeUncertainty, hmu);
+      else
+        options.hybridModeUncertainty = hmu;
+      end
 
       options = applyDefaults(options, defaultOptions);
       obj.options = options;
+
+      % some testing
+      boolArray = [obj.options.applyDeadZoneController, obj.options.applyWrongModeController];
+
+      if( sum(boolArray == true) > 1)
+        error('only one of the two uncertainty controller options may be specified');
+      end
+
     end
 
 
@@ -186,7 +206,7 @@ classdef HZDController < SimpleController
     function obj = step(obj,t,x,u)
       obj.dataHandle.data.tickCounter = obj.dataHandle.data.tickCounter + 1;
       obj.dataHandle.data.times = [obj.dataHandle.data.times;t];
-      [u, controlData] = testGetControlInput(obj,t,x);
+      [u, controlData] = getControlInput(obj,t,x);
 
       % bookkeeping: store some control data
       obj.dataHandle.data.currentControlInput = u;
@@ -204,90 +224,80 @@ classdef HZDController < SimpleController
 
     % this could be simplified a lot by using the new computeHybridZeroDyanmics method
     % this expects size(x)  = 5
-    function [u, controlData] = testGetControlInput(obj,t,x, options)
-      if nargin < 4
-        options = struct();
-      end
-
+    function [u, controlData] = getControlInput(obj,t,x)
       assert(length(x) == 5); % all the indices are supposing that x is of size 5
 
-      controlData = struct();
-      % Figure out what plan is telling us to do
-      phaseVar = x(obj.stanceIdx);
-      controlData.phaseVar = phaseVar;
-
-      % clip the phaseVar to limits
-      % could this be messing us up? maybe need to do a linear interpolation
-      % off of the ends
-      tspan = obj.hdTraj.tspan;
-      phaseVar = max(tspan(1), min(tspan(2), phaseVar));
-
-      thetaSwing_des = obj.hdTraj.eval(phaseVar);
-
-      theta1 = x(obj.theta1_idx);
-      theta1dot = x(obj.theta1dot_idx);
-      theta2dot = x(obj.theta2dot_idx);
-
-      h_deriv = [1, -obj.hdTraj_deriv.eval(phaseVar)];
-      h_d_dderiv = obj.hdTraj_dderiv.eval(phaseVar);
-
-      y = theta1 - thetaSwing_des;
-      ydot = h_deriv*[theta1dot; theta2dot];
+      % this is the standard control logic
+      controlData = obj.getStandardControlInput(x);
+      u = controlData.u;
+      uStar = controlData.uStar;
+      u_fb = controlData.u_fb;
 
 
-      % desired acceleration of y
-      % this is just the PD law
-      z = -obj.Kp*y - obj.Kd*ydot; 
 
 
-      q = x(2:3);
-      v = x(4:5);
-      [H,C,B] = obj.compassGaitStancePlant.manipulatorDynamics(q,v);
+      % The next sequence of if statements implements the custom logic for
+      % the uncertainty based control stuff
 
-      temp = (h_deriv*inv(H)*B)^(-1);
-      uStar = temp*(h_d_dderiv*theta2dot^2 + h_deriv*inv(H)*C);
-      u_fb = temp*z;
-
-      u = uStar + u_fb;
-
-      % yddot = A_y + B_y * u, copied from computeHybridZeroDynamics method
-      A_y = -h_d_dderiv*theta2dot^2  - h_deriv*inv(H)*C;
-      B_y = h_deriv*inv(H)*B;
-
-      % see if we need to do the uncertainty based controller thing
-      % this is for calling during a simulation.
+      % there are three types of uncertainty that we could do
       [val, d] = obj.uncertaintyAboutHybridMode(t,x);
-      if (val && obj.options.applyDeadZoneController)
-        u = obj.options.hybridModeUncertainty.deadZoneControllerValue;
+
+
+      if ((d.makingContact && obj.options.applyUncertaintyControllerOnMakingContact) || (d.breakingContact && obj.options.applyUncertaintyControllerOnBreakingContact))
+
+        if (obj.options.applyDeadZoneController)
+          u = obj.options.hybridModeUncertainty.deadZoneControllerValue;
         
-        % these are just placeholders for when we are doing deadzone controller
-        uStar = 0;
-        u_fb = 0; 
+          % these are just placeholders for when we are doing deadzone controller
+          uStar = 0;
+          u_fb = 0;
+        end
+
+        if (obj.options.applyWrongModeController)
+          xOther = obj.cgUtils.transformStateToOtherMode(x);
+          cData = obj.getStandardControlInput(x);
+
+          % we need to flip the signs of all the control inputs, to get them into the
+          % true local coordinates
+          u = -cData.u;
+          uStar = -cData.uStar;
+          u_fb = -cData.u_fb;
+        end
+
       end
 
-      if isfield(options, 'u')
-        % this means compute everything using the supplied u. For use during a reconstruction
-        % pass
-        % u_ff and u_fb may not make sense when we are doing the deadzone controller
-        u = options.u;
-      end
 
+      % if (val && obj.options.applyDeadZoneController)
+      %   % this case means we should apply the dead zone style controller
+      %   u = obj.options.hybridModeUncertainty.deadZoneControllerValue;
+        
+      %   % these are just placeholders for when we are doing deadzone controller
+      %   uStar = 0;
+      %   u_fb = 0; 
 
-      % this is for calling during a reconstruction of the control trajectory.
-      % recompute yddot from the u we actually used
+      % elseif ((d.makingContact && obj.options.applyMakingContactWrongModeController) || (d.breakingContact && obj.options.applyBreakingContactWrongModeController))
+      %   % this means we are applying the controller for the wrong hybrid mode
+      %   % and we are doing it either early or late depending on which flag is set
 
+      %   % in either case we need to flip our state to the stateOther, because we should thinkg
+      %   % of everything as being in some global coordinates and then us transforming it to
+      %   % the current local coordinates depending on which is the stance leg
+          
+      %     xOther = obj.cgUtils.transformStateToOtherMode(x);
+      %     cData = obj.getStandardControlInput(x);
 
+      %     % we need to flip the signs of all the control inputs, to get them into the
+      %     % true local coordinates
+      %     u = -cData.u;
+      %     uStar = -cData.uStar;
+      %     u_fb = -cData.u_fb;
+      % end
+    
+
+      % this records what really happens with the Lyapunov function for the u that we have chosen
       lyapunovData = obj.computeLyapunovData(x,u);
 
-      controlData.u = u;
-      controlData.uStar = uStar;
-      controlData.u_fb = u_fb;
-      controlData.y = y;
-      controlData.ydot = ydot;
-      controlData.phaseVar = phaseVar;
-      controlData.phaseVarClipped = phaseVar;
-
-      % copy information from lyapunovData over into controldata struct
+      % copy information from lyapunovData over into controlData struct
       for fn = fieldnames(lyapunovData)' % for some reason this prime is really important
         controlData.(fn{1}) = lyapunovData.(fn{1});
       end
@@ -295,49 +305,32 @@ classdef HZDController < SimpleController
     end
 
 
-    % function controlTrajs = makeControlDataTrajectories(obj,t,controlDataCells)
-    %   % numTimes = length(obj.dataHandle.data.controlDataCells);
+    function returnData = getStandardControlInput(obj, x)
+      returnData = struct();
+      lyapData = obj.computeLyapunovData(x,0);
 
-    %   % t = obj.dataHandle.data.times;
-    %   numTimes = length(t);
-    %   uStar = zeros(numTimes);
-    %   u_fb = zeros(numTimes);
-    %   y = zeros(numTimes);
-    %   ydot = zeros(numTimes);
-    %   z = zeros(numTimes);
-    %   phaseVar = zeros(numTimes);
-    %   phaseVarClipped = zeros(numTimes);
+      A_y = lyapData.A_y;
+      B_y = lyapData.B_y;
+      y = lyapData.y;
+      ydot = lyapData.ydot;
 
-    %   for i=1:numTimes
-    %     % t(i) = obj.dataHandle.data.controlDataCells{i}.t
-    %     uStar(i) = obj.dataHandle.data.controlDataCells{i}.uStar;
-    %     u_fb(i) = obj.dataHandle.data.controlDataCells{i}.u_fb;
-    %     y(i) = obj.dataHandle.data.controlDataCells{i}.y;
-    %     ydot(i) = obj.dataHandle.data.controlDataCells{i}.ydot;
-    %     z(i) = obj.dataHandle.data.controlDataCells{i}.z;
-    %     phaseVar(i) = obj.dataHandle.data.controlDataCells{i}.phaseVar;
-    %     phaseVarClipped(i) = obj.dataHandle.data.controlDataCells{i}.phaseVarClipped;
-    %   end
+      % just comes from the PD law
+      yddot_des = -obj.Kp*y - obj.Kd*ydot;
 
-    %   controlTrajs = struct();
-    %   % controlTrajs.traj.t = PPTrajectory(pchip(t, t));
-    %   controlTrajs.traj.uStar = PPTrajectory(pchip(t, uStar));
-    %   controlTrajs.traj.u_fb = PPTrajectory(pchip(t, u_fb));
-    %   controlTrajs.traj.y = PPTrajectory(pchip(t, y));
-    %   controlTrajs.traj.ydot = PPTrajectory(pchip(t, ydot));
-    %   controlTrajs.traj.z = PPTrajectory(pchip(t, z));
-    %   controlTrajs.traj.phaseVar = PPTrajectory(pchip(t, phaseVar));
-    %   controlTrajs.traj.phaseVarClipped = PPTrajectory(pchip(t, phaseVarClipped));
+      % yddot_des = A_y + B_y * u
 
-    %   controlTrajs.grid.t = t;
-    %   controlTrajs.grid.uStar = uStar;
-    %   controlTrajs.grid.u_fb = u_fb;
-    %   controlTrajs.grid.y = y;
-    %   controlTrajs.grid.ydot = ydot;
-    %   controlTrajs.grid.z = z;
-    %   controlTrajs.grid.phaseVar = phaseVar;
-    %   controlTrajs.grid.phaseVarClipped = phaseVarClipped;
-    % end
+      uStar = -A_y/B_y;
+      u_fb = yddot_des/B_y;
+      u = uStar + u_fb;
+
+
+      returnData = applyDefaults(returnData, lyapData);
+
+      returnData.u = u;
+      returnData.uStar = uStar;
+      returnData.u_fb = u_fb;
+      returnData.yddot = yddot_des;
+    end
 
 
     function trajStruct = makeTrajectoriesFromCellArray(obj,t,cellArray)
@@ -348,12 +341,12 @@ classdef HZDController < SimpleController
 
       dataArray = struct();
       for fn = fieldNames'
-        dataArray.(fn{1}) = zeros(numTimes, length(singleDataStruct.(fn{i})));
+        dataArray.(fn{1}) = zeros(numTimes, length(singleDataStruct.(fn{1})));
       end
 
       for i=1:numTimes
         for fn = fieldNames'
-          dataArray.(fn{1}) = cellArray{i}.(fn{1});
+          dataArray.(fn{1})(i,:) = cellArray{i}.(fn{1});
         end
       end
 
@@ -364,7 +357,7 @@ classdef HZDController < SimpleController
 
     end
 
-    function controlTrajs = makeControlDataTrajectories(obj,t,dataCells)
+    function controlTrajs = makeControlDataTrajectories(obj,tBreaks,dataCells)
 
       controlTrajs = struct();
 
@@ -372,15 +365,15 @@ classdef HZDController < SimpleController
       controlDataOther = {};
 
 
-      for i=1:length(t)
+      for i=1:length(tBreaks)
         controlData{i} = dataCells{i}.controlData;
         controlDataOther{i} = dataCells{i}.controlDataOther;
       end
 
-      controlTrajs.controlData = obj.makeTrajectoriesFromCellArray(controlData);
-      controlTrajs.controlDataOther = obj.makeTrajectoriesFromCellArray(controlDataOther);
+      controlTrajs.controlData = obj.makeTrajectoriesFromCellArray(tBreaks,controlData);
+      controlTrajs.controlDataOther = obj.makeTrajectoriesFromCellArray(tBreaks,controlDataOther);
 
-      
+
 
       % numTimes = length(obj.dataHandle.data.controlDataCells);
 
@@ -459,19 +452,21 @@ classdef HZDController < SimpleController
       % controlTrajs.grid.phaseVarClipped = phaseVarClipped;
     end
 
-    function data = recomputeControlData(obj, ytrajVal)
-      ytrajVal = ytraj.eval(t);
+    function data = recomputeControlData(obj, t, ytrajVal)
+
+      assert(length(ytrajVal) == 6);
+
       x = ytrajVal(1:5);
       u = ytrajVal(end);
 
       controlOptions.u = u;
-      [~,controlData] = obj.testGetControlInput(t,x, controlOptions);
+      controlData = obj.computeLyapunovData(x,u);
 
       xOther = obj.cgUtils.transformStateToOtherMode(x);
       uOther = -u;
 
       controlOptions.u = uOther;
-      [~,controlDataOther] = obj.testGetControlInput(t,xother, controlOptions);
+      controlDataOther = obj.computeLyapunovData(xOther,uOther);
 
       
       data.controlData = controlData;
@@ -485,9 +480,10 @@ classdef HZDController < SimpleController
       controlDataCells = {};
 
       % we assume that u is the final field of ytraj.
-      
+
       for i=1:numTimes
-        controlDataCells{end+1} = obj.recomputeControlData(ytrajVal);
+        t = tBreaks(i);
+        controlDataCells{end+1} = obj.recomputeControlData(t, ytraj.eval(t));
       end
 
       returnData = obj.makeControlDataTrajectories(tBreaks, controlDataCells);
@@ -594,6 +590,7 @@ classdef HZDController < SimpleController
       assert(length(x) == 5);
 
       phaseVar = x(obj.stanceIdx);
+      phaseVarUnclipped = phaseVar;
       % clip the phaseVar to limits
       % could this be messing us up? maybe need to do a linear interpolation
       % off of the ends
@@ -627,6 +624,7 @@ classdef HZDController < SimpleController
       returnData.B_y = B_y;
       returnData.y = y;
       returnData.ydot = ydot;
+      returnData.phaseVarUnclipped = phaseVarUnclipped;
       returnData.phaseVar = phaseVar;
     end
 
@@ -664,10 +662,12 @@ classdef HZDController < SimpleController
       theta_sw = x(obj.swingIdx);
 
       % this is the interleg angle
-      sig = theta_sw - theta_st;
+      % DEPRECATED
+      % sig = theta_sw - theta_st;
 
-      % this should only happen if interleg angle is sufficiently large
-      if ((sig > 0.14) && (toeHeight < obj.options.hybridModeUncertainty.makingContactToeHeightThreshold))
+
+      % this should only happen if stance leg angle is sufficiently negative
+      if ((theta_st < -0.02) && (toeHeight < obj.options.hybridModeUncertainty.makingContactToeHeightThreshold))
 
         val = true;
         returnData.makingContact = true;
@@ -679,7 +679,7 @@ classdef HZDController < SimpleController
     end
 
     function data = computeLyapunovData(obj,x,u,hzdOutputData)
-      if (nargin < 3)
+      if (nargin < 4)
         hzdOutputData = obj.computeHybridZeroDynamics(x);
       end
 
@@ -694,48 +694,51 @@ classdef HZDController < SimpleController
       V_dot = 2*[y, ydot] * obj.S * [ydot;yddot];
 
       data = struct();
+      data.u = u;
+      data.uStar = -A_y/B_y;
       data.y = y;
       data.ydot = ydot;
       data.A_y = A_y;
       data.B_y = B_y;
       data.yddot = yddot;
       data.V = V;
-      data.V_dot = V;
+      data.V_dot = V_dot;
     end
 
 
-    function data = computeLyapunovFunctionInformation(obj, t, x,u,controlData)
-      data = controlData; % just add some fields to it
-      assert(length(x) == 5);
+    % DEPRECATED
+    % function data = computeLyapunovFunctionInformation(obj, t, x,u,controlData)
+    %   data = controlData; % just add some fields to it
+    %   assert(length(x) == 5);
 
-      % [y, ydot] * S * [y; ydot]
-      data.S_val = [controlData.y; controlData.ydot]' * obj.S * [controlData.y; controlData.ydot];
+    %   % [y, ydot] * S * [y; ydot]
+    %   data.S_val = [controlData.y; controlData.ydot]' * obj.S * [controlData.y; controlData.ydot];
 
-      % [y, ydot] * S * [ydot; yddot]
-      data.S_dot_val = 2*[controlData.y; controlData.ydot]' * obj.S * [controlData.ydot; controlData.yddot];
-
-
-      % compute what we would have done if we (mistakenly) though we were in the other mode
-      [u_other, controlDataOther] = obj.testGetControlInput(t, x);
-
-      % the next to lines I put in for completeness. They don't really mean much at the moment
-      % what really matters is the control input u that we would have done if we thought that
-      % we were in that mode
-      controlDataOther.S_val = [controlDataOther.y; controlDataOther.ydot]' * obj.S * [controlDataOther.y; controlDataOther.ydot];
-      controlDataOther.S_dot_val = 2 * [controlData.y; controlData.ydot]' * obj.S * [controlDataOther.ydot; controlDataOther.yddot];
-
-      data.otherHybridMode = controlDataOther;
+    %   % [y, ydot] * S * [ydot; yddot]
+    %   data.S_dot_val = 2*[controlData.y; controlData.ydot]' * obj.S * [controlData.ydot; controlData.yddot];
 
 
-      % this determines what happens if we are in the wrong hybrid mode, i.e. the true state is
-      % x but we control as if we were in the other mode
-      hzDynamics = obj.computeHybridZeroDynamics(x); % this is the hzdDynamics in the current hybrid mode
+    %   % compute what we would have done if we (mistakenly) though we were in the other mode
+    %   [u_other, controlDataOther] = obj.testGetControlInput(t, x);
 
-      data.A_y = hzDynamics.A_y;
-      data.B_y = hzDynamics.B_y;
-      data.wrongHybridMode.yddot = data.A_y + data.B_y*u_other;
-      data.wrongHybridMode.S_dot_val = 2 * [controlData.y; controlData.ydot]' * obj.S * [controlData.ydot; data.wrongHybridMode.yddot];
-    end
+    %   % the next to lines I put in for completeness. They don't really mean much at the moment
+    %   % what really matters is the control input u that we would have done if we thought that
+    %   % we were in that mode
+    %   controlDataOther.S_val = [controlDataOther.y; controlDataOther.ydot]' * obj.S * [controlDataOther.y; controlDataOther.ydot];
+    %   controlDataOther.S_dot_val = 2 * [controlData.y; controlData.ydot]' * obj.S * [controlDataOther.ydot; controlDataOther.yddot];
+
+    %   data.otherHybridMode = controlDataOther;
+
+
+    %   % this determines what happens if we are in the wrong hybrid mode, i.e. the true state is
+    %   % x but we control as if we were in the other mode
+    %   hzDynamics = obj.computeHybridZeroDynamics(x); % this is the hzdDynamics in the current hybrid mode
+
+    %   data.A_y = hzDynamics.A_y;
+    %   data.B_y = hzDynamics.B_y;
+    %   data.wrongHybridMode.yddot = data.A_y + data.B_y*u_other;
+    %   data.wrongHybridMode.S_dot_val = 2 * [controlData.y; controlData.ydot]' * obj.S * [controlData.ydot; data.wrongHybridMode.yddot];
+    % end
 
 
 

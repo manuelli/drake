@@ -35,10 +35,20 @@ options = struct();
 options.Kp = 20;
 options.dampingRatio = 1.0;
 
-% set this to true if you want to run the dead-zone controller
-options.applyDeadZoneController = false;
+% specify which controller should run when there is uncertainty
+options.applyDeadZoneController = true;
+options.applyWrongModeController = false;
 
+
+% specify when you have the mode uncertainty, before contact, after contact
+% or both
+options.applyUncertaintyControllerOnMakingContact = false;
+options.applyUncertaintyControllerOnBreakingContact = true;
+
+% specify how much mode uncertainty you have
 options.hybridModeUncertainty.makingContactToeHeightThreshold = 0.05;
+options.hybridModeUncertainty.breakingContactTimeThreshold = 0.1;
+
 
 hzdController = HZDController(p, options);
 hzdController = hzdController.setNominalTrajectory(xtraj_opt, utraj_opt);
@@ -98,7 +108,7 @@ stanceVelDelta = [-0.1:0.05:0.1];
 swingVelDelta = [-0.2; 0.1; 0.2];
 
 stanceVelDelta = [0.0];
-swingVelDelta = [0.0; -0.2];
+swingVelDelta = [0.0, -0.2];
 
 if (false)
   % hack to only run a single simulation instead of many
@@ -161,16 +171,9 @@ guard2 = p.footCollisionGuard2(t,x(2:end),0)
 
 
 
-%% Some optional plotting
 
-tspan = [2,8];
-tGrid = linspace(tspan(1),tspan(2), 1000);
-valGrid = controlTrajs.controlData.V.eval(tGrid);
 
-figCounter = 10;
-fig = figure(figCounter);
-clf(fig);
-plot(tGrid, valGrid);
+
 
 
 

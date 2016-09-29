@@ -25,29 +25,16 @@ function [controlTrajs] = analyzeTrajectory(inputStruct, options)
 
   % reconstruct the control trajectories from the HZD controller
   hzdController = p.controller;
-  controlTrajs = hzdController.reconstructControlDataFromTrajectory(xtraj);
-
-
-  % Plot the Lyapunov function (and it's derivative) for y, which comes from the PD law
-  A = [0,1;0,0];
-  B = [0;1];
-
-  K = [hzdController.Kp,hzdController.Kd]; % the gain matrix, u = -K x
-
-  temp = A - B*K;
-  Q = eye(2);
-  S = lyap(temp,Q);
-
-  S_function = @(t) S_traj_function(controlTrajs.traj.y)
+  controlTrajs = hzdController.reconstructControlDataFromTrajectory(ytraj);
 
 
   % plot y and ydot
   fig = figure(figCounter);
   clf(fig);
   hold on;
-  h = fnplt(controlTrajs.traj.y);
+  h = fnplt(controlTrajs.controlData.y);
   set(h,'Color','b', 'DisplayName','y')
-  h = fnplt(controlTrajs.traj.ydot);
+  h = fnplt(controlTrajs.controlData.ydot);
 
   set(h,'Color','r', 'DisplayName','y dot')
   title('y and ydot');
@@ -55,15 +42,27 @@ function [controlTrajs] = analyzeTrajectory(inputStruct, options)
   figCounter = figCounter + 1;
 
 
+
+  fig = figure(figCounter);
+  clf(fig);
+  hold on;
+  h = fnplt(controlTrajs.controlData.V);
+  set(h,'Color','b', 'DisplayName','V')
+
+  title('V');
+  legend('show');
+  figCounter = figCounter + 1;
+
   % plot the value function, and it's derivative
   fig = figure(figCounter);
   clf(fig);
   hold on;
-  h = fnplt(controlTrajs.traj.S);
-  set(h,'Color','b', 'DisplayName','S')
-  h = fnplt(controlTrajs.traj.S_dot);
+  h = fnplt(controlTrajs.controlData.V);
+  set(h,'Color','b', 'DisplayName','V')
 
-  set(h,'Color','r', 'DisplayName','S dot')
+
+  h = fnplt(controlTrajs.controlData.V_dot);
+  set(h,'Color','r', 'DisplayName','V dot')
   title('S and Sdot');
   legend('show');
   figCounter = figCounter + 1;
@@ -72,13 +71,13 @@ function [controlTrajs] = analyzeTrajectory(inputStruct, options)
   fig = figure(figCounter);
   clf(fig);
   hold on;
-  h = fnplt(controlTrajs.traj.u);
+  h = fnplt(controlTrajs.controlData.u);
   set(h, 'Color', 'b', 'DisplayName', 'u');
 
-  h = fnplt(controlTrajs.traj.u_fb);
-  set(h, 'Color', 'r', 'DisplayName', 'u fb');
+  % h = fnplt(controlTrajs.controlData.u_fb);
+  % set(h, 'Color', 'r', 'DisplayName', 'u fb');
 
-  h = fnplt(controlTrajs.traj.uStar);
+  h = fnplt(controlTrajs.controlData.uStar);
   set(h, 'Color', 'g', 'DisplayName', 'u ff');
 
   title('control input')
@@ -110,12 +109,14 @@ function [controlTrajs] = analyzeTrajectory(inputStruct, options)
     fig = figure(figCounter);
     clf(fig);
     hold on;
-    h = fnplt(xtraj,[3]);
-    set(h, 'Color','b', 'DisplayName','swing')
-
     h = fnplt(xtraj,[4]);
-    set(h, 'Color','r')
+    set(h, 'Color','b', 'DisplayName','swing');
+
+    h = fnplt(xtraj,[5]);
+    set(h, 'Color','r', 'DisplayName', 'stance');
     title('velocity trajectories', 'DisplayName','stance')
+
+    legend('show')
     hold off;
 
     figCounter = figCounter + 1;
