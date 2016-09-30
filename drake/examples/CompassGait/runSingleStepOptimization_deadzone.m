@@ -42,8 +42,8 @@ options.applyWrongModeController = false;
 
 % specify when you have the mode uncertainty, before contact, after contact
 % or both
-options.applyUncertaintyControllerOnMakingContact = true;
-options.applyUncertaintyControllerOnBreakingContact = false;
+options.applyUncertaintyControllerOnMakingContact = false;
+options.applyUncertaintyControllerOnBreakingContact = true;
 
 % specify how much mode uncertainty you have
 options.hybridModeUncertainty.makingContactToeHeightThreshold = 0.05;

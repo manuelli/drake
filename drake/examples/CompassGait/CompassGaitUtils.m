@@ -59,7 +59,7 @@ classdef CompassGaitUtils
 
     function xOther = transformStateToOtherMode(obj, x)
       xOther = 0*x;
-      xOther(1) = 3-x;
+      xOther(1) = 3-x(1);
 
       xOther(2:end)  = obj.swapMatrix*x(2:end);
     end
