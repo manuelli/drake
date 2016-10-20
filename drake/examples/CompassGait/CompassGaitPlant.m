@@ -17,7 +17,7 @@ classdef CompassGaitPlant < HybridDrakeSystem
       
 
 
-      obj = obj@HybridDrakeSystem(1,6);
+      obj = obj@HybridDrakeSystem(1,7);
       % allow passing in of ground slope
       if (nargin > 0)
         obj.gamma = gammaIn;
@@ -27,7 +27,7 @@ classdef CompassGaitPlant < HybridDrakeSystem
       obj.l=obj.a+obj.b;
       p = CompassGaitStancePlant(obj.m,obj.mh,obj.a,obj.b,obj.l,obj.g);
       obj = setInputFrame(obj,p.getInputFrame);
-      outputFrame = CoordinateFrame('CompassGaitPlantOutput', 6, 'x', {'mode','theta1','theta2','theta1_dot','theta2_dot','u'});
+      outputFrame = CoordinateFrame('CompassGaitPlantOutput', 7, 'x', {'mode','theta1','theta2','theta1_dot','theta2_dot','u', 'plan time'});
       obj = obj.setOutputFrame(outputFrame);
 %       obj = setOutputFrame(obj,p.getOutputFrame);
       
@@ -106,8 +106,9 @@ classdef CompassGaitPlant < HybridDrakeSystem
       status = 0;
     end
 
+
     function y = output(obj,t,x,u)
-      y = [x;u];
+      y = [x;u;0]; % just put in a place holder for plan time
 
       % switch the order if that is specified
       if (obj.useFixedOutputCoords)

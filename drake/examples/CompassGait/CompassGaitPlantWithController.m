@@ -24,7 +24,9 @@ classdef CompassGaitPlantWithController < CompassGaitPlant
       % just a hack for now, redo this later . . . ?
       obj.controller = obj.controller.step(t,x);
       u_controller = obj.controller.getCurrentControlInput();
+      planTime = obj.controller.getCurrentPlanTime();
       y = output@CompassGaitPlant(obj,t,x,u_controller);
+      y(end) = planTime;
     end
 
     % controller needs to implement step(t,x) and getCurrentControlInput(t,x)
