@@ -12,6 +12,7 @@ classdef SimpleController
       obj.compassGaitPlant = compassGaitPlant;
       dataHandle = SharedDataHandle(struct());
       dataHandle.data.currentControlInput = 0;
+      dataHandle.data.currentPlanTime = 0;
       dataHandle.data.tickCounter = 0;
       dataHandle.data.u = [];
       dataHandle.data.times = [];
@@ -26,6 +27,16 @@ classdef SimpleController
     
     function u = getCurrentControlInput(obj)
       u = obj.dataHandle.data.currentControlInput;
+    end
+
+    % for use in the time stepping simulation
+    function [u, controlData] = tick(obj,t,x)
+      u = 0;
+      controlData = struct();
+    end
+
+    function planTime = getCurrentPlanTime(obj)
+      planTime = obj.dataHandle.data.currentPlanTime;
     end
   end
   
