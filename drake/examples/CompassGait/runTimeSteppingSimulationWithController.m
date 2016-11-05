@@ -11,53 +11,53 @@ function returnData = runTimeSteppingSimulationWithController(plant, controller,
   hybridEventTimes = [];
 
   returnData = struct();
+  t_current = tspan(1);
+
+  uGrid = [];
+  xGrid = [];
+  tGrid = [];
+  tControlGrid = [];
+  currentMode = x_initial(1);
+  x_current = x_initial(2:end);
 
 
-  x_current = x_initial;
-  for i=1:(numTimes-1)
-    t = tGrid(i);
-    [u, controlData] = controller.tick(t,x_current);
-    t_start = tGrid(i);
-    t_end = tGrid(i+1);
-    [ytrajShort, xtrajShort] = plant.simulateWithConstantControlInput(x_current, [t_start, t_end], u);
+  while(t_current < tspan(2))
+    [u, controlData] = controller.tick(t_current,x_current);
 
-    x_current = xtrajShort.eval(t_end); % update x_current for the next simulation cycle
+    t_start = t_current;
+    t_end = t_current + dt;
+    [t,y,te,ye,ie] = plant.simulateWithConstantControlInputODE(x_current, [t_start, t_end], u);
 
-    % there is a bit of special casing for the first tick
-    if(i == 1)
-      uGrid = zeros(length(u), numTimes-1);
-      xtraj = xtrajShort;
-      ytraj = ytrajShort;
-      continue;
+    tGrid = [tGrid;t];
+    % not quite sure how to record u, yet;
+    tControlGrid = [tControlGrid;t_start];
+    uGrid = [uGrid;u];
+
+    hybridEventTimes = [hybridEventTimes; te];
+
+    currentSimWithModeInfo = [ones(1,length(t));y'];
+    xGrid = [xGrid, currentSimWithModeInfo];
+
+    % book keeping
+    yPrime = y';
+    x_current = yPrime(:, end);
+    t_current = t(end);
+
+    % this means we went through a hybrid reset
+    if(length(te) > 0)
+      [x_current, currentMode] = plant.collisionDynamics(currentMode, 0, x_current);
     end
-
-    uGrid(:, i) = u;
-    controlDataCellArray{end+1} = controlData;
-
-    % append the trajectories
-    % need to be careful to deal with hybrid trajectories here
-
-
-    if isa(xtrajShort, 'HybridTrajectory')
-      numTrajs = length(xtrajShort.traj);
-      for j=1:numTrajs
-        xtraj = xtraj.append(xtrajShort.traj{j});
-        ytraj = ytraj.append(ytrajShort.traj{j});
-      end
-
-      hybridEventTimes = [hybridEventTimes, xtrajShort.te];
-    else
-      % standard case, can just do appends
-      xtraj = xtraj.append(xtrajShort);
-      ytraj = ytraj.append(ytrajShort);
-    end
-    
   end
 
-  returnData.utraj = PPTrajectory(pchip(tGrid(1:numTimes-1), uGrid));
+  % returnData.utraj = PPTrajectory(pchip(tGrid(1:numTimes-1), uGrid));
   returnData.hybridEventTimes = hybridEventTimes;
-  returnData.xtraj = xtraj;
-  returnData.ytraj = ytraj;
-  returnData.controlDataCellArray = controlDataCellArray;
+
+
+  [tGridUnique, uniqueIdx, ~] = unique(tGrid);
+
+  returnData.xtraj = PPTrajectory(pchip(tGridUnique, xGrid(:, uniqueIdx)));
+
+  % returnData.ytraj = ytraj;
+  % returnData.controlDataCellArray = controlDataCellArray;
 
 end
