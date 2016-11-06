@@ -2,7 +2,7 @@ gammaIn = 3*pi/180;
 r = TimeSteppingCompassGaitPlant(gammaIn);
 
 x_initial = r.getInitialState();
-tspan = [0,2.0];
+tspan = [0,0.5];
 
 
 [t,y, te, ye, ie] = r.simulateWithConstantControlInputODE(x_initial(2:end), tspan, 0);

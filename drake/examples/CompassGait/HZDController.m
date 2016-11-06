@@ -58,6 +58,7 @@ classdef HZDController < SimpleController
       defaultOptions.applyUncertaintyControllerOnBreakingContact = false;
       defaultOptions.applyDeadZoneController = false;
       defaultOptions.applyWrongModeController = false;
+      defaultOptions.applyRobustController = false;
       % defaultOptions.applyMakingContactWrongModeController = false;
       % defaultOptions.applyBreakingContactWrongModeController = false;
 
@@ -80,7 +81,7 @@ classdef HZDController < SimpleController
       obj.options = options;
 
       % some testing
-      boolArray = [obj.options.applyDeadZoneController, obj.options.applyWrongModeController];
+      boolArray = [obj.options.applyDeadZoneController, obj.options.applyWrongModeController, obj.options.applyRobustController];
 
       if( sum(boolArray == true) > 1)
         error('only one of the two uncertainty controller options may be specified');
@@ -216,6 +217,12 @@ classdef HZDController < SimpleController
       modeVal = x(1);
       obj.dataHandle.data.lastTimeInEachMode(modeVal) = t;
     end
+
+    function [u, controlData] = tick(obj,t,x)
+      obj.step(t,x,0);
+      u = obj.dataHandle.data.u(end);
+      controlData = obj.dataHandle.data.controlDataCells{end};
+    end
     
     function u = getCurrentControlInput(obj)
       u = obj.dataHandle.data.currentControlInput;
@@ -241,6 +248,7 @@ classdef HZDController < SimpleController
 
       % there are three types of uncertainty that we could do
       [val, d] = obj.uncertaintyAboutHybridMode(t,x);
+      controlData.alphaVal = d.alphaVal;
 
 
       if ((d.makingContact && obj.options.applyUncertaintyControllerOnMakingContact) || (d.breakingContact && obj.options.applyUncertaintyControllerOnBreakingContact))
@@ -264,35 +272,14 @@ classdef HZDController < SimpleController
           u_fb = -cData.u_fb;
         end
 
-      end
+        if (obj.options.applyRobustController)
+          [uRobust, robustData] = obj.computeUncertaintyAwareControlInput(x);
+          u = uRobust;
+          uStar = 0;
+          u_fb = 0;
+        end
 
-
-      % if (val && obj.options.applyDeadZoneController)
-      %   % this case means we should apply the dead zone style controller
-      %   u = obj.options.hybridModeUncertainty.deadZoneControllerValue;
-        
-      %   % these are just placeholders for when we are doing deadzone controller
-      %   uStar = 0;
-      %   u_fb = 0; 
-
-      % elseif ((d.makingContact && obj.options.applyMakingContactWrongModeController) || (d.breakingContact && obj.options.applyBreakingContactWrongModeController))
-      %   % this means we are applying the controller for the wrong hybrid mode
-      %   % and we are doing it either early or late depending on which flag is set
-
-      %   % in either case we need to flip our state to the stateOther, because we should thinkg
-      %   % of everything as being in some global coordinates and then us transforming it to
-      %   % the current local coordinates depending on which is the stance leg
-          
-      %     xOther = obj.cgUtils.transformStateToOtherMode(x);
-      %     cData = obj.getStandardControlInput(x);
-
-      %     % we need to flip the signs of all the control inputs, to get them into the
-      %     % true local coordinates
-      %     u = -cData.u;
-      %     uStar = -cData.uStar;
-      %     u_fb = -cData.u_fb;
-      % end
-    
+      end    
 
       % this records what really happens with the Lyapunov function for the u that we have chosen
       lyapunovData = obj.computeLyapunovData(x,u);
@@ -302,6 +289,58 @@ classdef HZDController < SimpleController
         controlData.(fn{1}) = lyapunovData.(fn{1});
       end
 
+
+      % just record what we would have done in each mode
+      if (x(1) == 1)
+        temp = obj.getStandardControlInput(x);
+        controlData.u_mode_1 = temp.u;
+
+        xOther = obj.cgUtils.transformStateToOtherMode(x);
+        temp = obj.getStandardControlInput(xOther);
+        controlData.u_mode_2 = -temp.u;
+      else
+        temp = obj.getStandardControlInput(x);
+        controlData.u_mode_2 = temp.u;
+
+        xOther = obj.cgUtils.transformStateToOtherMode(x);
+        temp = obj.getStandardControlInput(xOther);
+        controlData.u_mode_1 = -temp.u;
+      end
+
+      % record what the blended controller would have done
+      controlData.u_simple_blend = obj.computeSimpleBlendingController(x, d.alphaVal);
+
+    end
+
+    function u = computeSimpleBlendingController(obj, x, alphaVal)
+      currentMode = x(1);
+      x_mode_1 = 0;
+      x_mode_2 = 0;
+
+      if(currentMode == 1)
+        x_mode_1 = x;
+        x_mode_2 = obj.cgUtils.transformStateToOtherMode(x);
+      else
+        x_mode_2 = x;
+        x_mode_1 = obj.cgUtils.transformStateToOtherMode(x);
+      end
+
+
+      % note that each of these u's are in their own coordinates, so 
+      % we can't add them directly until we convert them back to the right coordinates for this mode
+      cData_mode_1 = obj.getStandardControlInput(x_mode_1);
+      cData_mode_2 = obj.getStandardControlInput(x_mode_2);
+
+      u_mode_1 = cData_mode_1.u;
+      u_mode_2 = cData_mode_2.u;
+
+      if (currentMode == 1)
+        u_mode_2 = -u_mode_2;
+      else
+        u_mode_1 = -u_mode_1;
+      end
+
+      u = alphaVal*u_mode_1 + (1-alphaVal)*u_mode_2;
     end
 
 
@@ -454,10 +493,12 @@ classdef HZDController < SimpleController
 
     function data = recomputeControlData(obj, t, ytrajVal)
 
-      assert(length(ytrajVal) == 6);
+      % may be length 6 or 7, because of new lqr stuff that added
+      % extra field to the output
+      assert((length(ytrajVal) == 6) || (length(ytrajVal) == 7));
 
       x = ytrajVal(1:5);
-      u = ytrajVal(end);
+      u = ytrajVal(6);
 
       controlOptions.u = u;
       controlData = obj.computeLyapunovData(x,u);
@@ -641,6 +682,7 @@ classdef HZDController < SimpleController
 
       currentMode = x(1);
       otherMode = 3 - currentMode;
+      certaintyFraction = 1;
 
       % first check if we are breaking contact
       tPrev = obj.dataHandle.data.lastTimeInEachMode(otherMode);
@@ -649,32 +691,41 @@ classdef HZDController < SimpleController
         val = true;
         returnData.breakingContact = true;
         returnData.timeVal = t - tPrev;
-        return;
+
+        certaintyFraction = (t-tPrev)/obj.options.hybridModeUncertainty.breakingContactTimeThreshold;
+      else
+        % now see if we are in the making contact mode
+        guard1 = obj.compassGaitPlant.footCollisionGuard1(t,xs,0);
+        guard2 = obj.compassGaitPlant.footCollisionGuard2(t,xs,0);
+        toeHeight = obj.compassGaitPlant.computeToeHeight(x);
+
+        theta_st = x(obj.stanceIdx);
+        theta_sw = x(obj.swingIdx);
+
+        % this is the interleg angle
+        % DEPRECATED
+        % sig = theta_sw - theta_st;
+
+
+        % this should only happen if stance leg angle is sufficiently negative
+        if ((theta_st < -0.02) && (toeHeight < obj.options.hybridModeUncertainty.makingContactToeHeightThreshold))
+
+          val = true;
+          returnData.makingContact = true;
+          returnData.guard1 = guard1;
+          returnData.toeHeight = toeHeight;
+          certaintyFraction = toeHeight/obj.options.hybridModeUncertainty.makingContactToeHeightThreshold;
+        end
       end
 
-
-      % now see if we are in the making contact mode
-      guard1 = obj.compassGaitPlant.footCollisionGuard1(t,xs,0);
-      guard2 = obj.compassGaitPlant.footCollisionGuard2(t,xs,0);
-      toeHeight = obj.compassGaitPlant.computeToeHeight(x);
-
-      theta_st = x(obj.stanceIdx);
-      theta_sw = x(obj.swingIdx);
-
-      % this is the interleg angle
-      % DEPRECATED
-      % sig = theta_sw - theta_st;
-
-
-      % this should only happen if stance leg angle is sufficiently negative
-      if ((theta_st < -0.02) && (toeHeight < obj.options.hybridModeUncertainty.makingContactToeHeightThreshold))
-
-        val = true;
-        returnData.makingContact = true;
-        returnData.guard1 = guard1;
-        returnData.toeHeight = toeHeight;
-        return;
+      % now figure out alpha value, where alpha = probability that we are in mode 1
+      if (currentMode == 1)
+        alphaVal = 0.5 + (0.5)*certaintyFraction;
+      else
+        alphaVal = 0.5 - (0.5)*certaintyFraction;
       end
+
+      returnData.alphaVal = alphaVal;
 
     end
 
@@ -693,6 +744,11 @@ classdef HZDController < SimpleController
       V = [y, ydot] * obj.S * [y;ydot];
       V_dot = 2*[y, ydot] * obj.S * [ydot;yddot];
 
+      w_temp = 2*[y, ydot] * obj.S; % this should be a 1 x 2 vector
+
+      V_dot_constant = w_temp(1)*ydot + w_temp(2)*A_y;
+      V_dot_linear = w_temp(2)*B_y;
+
       data = struct();
       data.u = u;
       data.uStar = -A_y/B_y;
@@ -703,6 +759,77 @@ classdef HZDController < SimpleController
       data.yddot = yddot;
       data.V = V;
       data.V_dot = V_dot;
+      data.V_dot_constant = V_dot_constant;
+      data.V_dot_linear = V_dot_linear;
+    end
+
+
+    function [u, data] = computeUncertaintyAwareControlInput(obj, x, options)
+      if nargin < 3
+        options = struct();
+      end
+
+      
+      lyapunovData = obj.computeLyapunovData(x, 0);
+
+      % remember that u has the opposite sign for the other mode stuff 
+      xOther = obj.cgUtils.transformStateToOtherMode(x);
+      lyapunovDataOther = obj.computeLyapunovData(xOther,  0);
+
+      sig = 1.0;
+      data = struct();
+      uMax = 10;
+
+      % construct the cost function for fmincon
+      function costVal = costFun(u)
+        V_dot = lyapunovData.V_dot_constant + lyapunovData.V_dot_linear*u;
+        V_dot_other = lyapunovDataOther.V_dot_constant - lyapunovDataOther.V_dot_linear*u;
+
+        % sig is a tunable parameter controlling tradeoff between descending the
+        % two different Lyapunov functions
+        % costVal = exp(V_dot/(1.0*sig)) + exp(V_dot_other/(1.0*sig));
+
+        costVal = max(V_dot, V_dot_other);
+      end
+
+      % setup constraints for fmincon
+
+      % matrix for inequality constraints
+      A = zeros(2,1);
+      A(1) = lyapunovData.V_dot_linear;
+      A(2) = lyapunovDataOther.V_dot_linear*(-1.0);
+
+      b = zeros(2,1);
+      b(1) = -lyapunovData.V_dot_constant;
+      b(2) = -lyapunovDataOther.V_dot_constant;
+
+      % % now minimize the const function over u;
+      % [uOpt, fval, exitflag] = fmincon(@costFun, 0, A, b);
+
+      % % if exitflag = -2, then no feasible point was found
+      % if (exitflag == -2)
+      %   data.feasible = 0;
+
+      %   % redo the optimization without the constraints on non-positivity of Lyapunov
+      %   % function derivatives
+      %   [uOpt, fval, exitflag] = fminunc(@costFun, 0);
+      % else
+      %   data.feasible = 1;
+      % end
+
+      % minimize V_dot across modes, subject to some input limits on u
+      [uOpt, fval, exitflag] = fmincon(@costFun, 0, [], [], [], [], -uMax, uMax);
+
+
+
+      data.exitflag = exitflag;
+      data.fval = fval;
+      data.u = uOpt;
+      
+      V_dot_vals = A*uOpt - b;
+      data.V_dot = V_dot_vals(1);
+      data.V_dot_other = V_dot_vals(2);
+      u = uOpt;
     end
 
 
