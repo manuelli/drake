@@ -17,15 +17,16 @@ function [controlTrajs] = analyzeTrajectory(inputStruct, options)
 
   p = inputStruct.plant;
   xtraj = inputStruct.xtraj;
-  ytraj = inputStruct.ytraj;
+  controlTrajs = inputStruct.controlTrajs;
+  % ytraj = inputStruct.ytraj;
 
 
   v = CompassGaitVisualizer(p, inputStruct.xtraj.getOutputFrame);
   playback(v,xtraj,struct('slider',true));
 
   % reconstruct the control trajectories from the HZD controller
-  hzdController = p.controller;
-  controlTrajs = hzdController.reconstructControlDataFromTrajectory(ytraj);
+  % hzdController = p.controller;
+  % controlTrajs = hzdController.reconstructControlDataFromTrajectory(ytraj);
 
 
   % plot y and ydot
