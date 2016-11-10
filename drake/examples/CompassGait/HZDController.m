@@ -220,7 +220,7 @@ classdef HZDController < SimpleController
 
     function [u, controlData] = tick(obj,t,x)
       obj.step(t,x,0);
-      u = obj.dataHandle.data.u(end);
+      u = obj.dataHandle.data.currentControlInput;
       controlData = obj.dataHandle.data.controlDataCells{end};
     end
     
@@ -263,7 +263,7 @@ classdef HZDController < SimpleController
 
         if (obj.options.applyWrongModeController)
           xOther = obj.cgUtils.transformStateToOtherMode(x);
-          cData = obj.getStandardControlInput(x);
+          cData = obj.getStandardControlInput(xOther);
 
           % we need to flip the signs of all the control inputs, to get them into the
           % true local coordinates
@@ -279,7 +279,12 @@ classdef HZDController < SimpleController
           u_fb = 0;
         end
 
-      end    
+        controlData.u = u;
+        controlData.uStar = uStar;
+        controlData.u_fb = u_fb;
+      end
+
+
 
       % this records what really happens with the Lyapunov function for the u that we have chosen
       lyapunovData = obj.computeLyapunovData(x,u);
@@ -309,6 +314,8 @@ classdef HZDController < SimpleController
 
       % record what the blended controller would have done
       controlData.u_simple_blend = obj.computeSimpleBlendingController(x, d.alphaVal);
+
+      
 
     end
 

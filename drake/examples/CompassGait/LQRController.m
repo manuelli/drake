@@ -210,7 +210,7 @@ classdef LQRController < SimpleController
 
       % for debugging only
       % use this to run with passive compass gait to check piping
-      obj.dataHandle.data.currentControlInput = 0;
+      % obj.dataHandle.data.currentControlInput = 0;
 
       obj.dataHandle.data.u(end+1) = u;
       modeVal = x(1);
@@ -220,6 +220,7 @@ classdef LQRController < SimpleController
 
     function u = computeControlInput(obj,t,x_full,t_plan)
 
+      assert(length(x_full)==5);
 
       % clip t_plan to limits
       tspan = obj.S_traj.tspan;
@@ -237,19 +238,118 @@ classdef LQRController < SimpleController
       % get the control input
 
       x_des =  obj.xtraj.eval(t_plan);
-      [A,B] = obj.compassGaitStancePlant.linearize(t_plan, x_des, 0);
+      u_des = obj.utraj.eval(t_plan);
+
+      % this is linearizing about planned state
+      % [A,B] = obj.compassGaitStancePlant.linearize(t_plan, x_des, u_des);
+
+      % alternatively could linearize around current state
+      % not sure if this will improve things or not
+      [A,B] = obj.compassGaitStancePlant.linearize(t_plan, x, u_des);
 
       % control input consists of feedback and feedforward
       u_fb = -obj.options.R^(-1)*B'*S*(x - x_des);
-      u_ff = obj.utraj.eval(t_plan);
+      
 
-      u = u_fb + u_ff;
+      u = u_fb + u_des;
 
     end
 
     function u = getCurrentControlInput(obj)
       u = obj.dataHandle.data.currentControlInput;
     end
+
+
+
+    % this is for post-processing
+    function V_traj = computeValueFunctionFromTrajectory(obj, ytraj)
+
+      y = ytraj.eval(0);
+      assert(size(y)==7)
+
+      tBreaks = ytraj.getBreaks();
+      numTimes = length(tBreaks);
+      tPlanTraj = ytraj(7);
+      xTraj = ytraj(2:5);
+
+      V_grid = zeros(1,numTimes);
+      for i=1:numTimes
+        t - tBreaks(i)
+        t_plan = tPlanTraj(t);
+        x = xTraj.eval(t);;
+        x_plan = obj.xtraj.eval(t_plan);
+        x_err = x - x_plan;
+        V = x_err' * obj.S_traj.eval(t_plan)*x_err;
+        V_grid(:,i) = V; 
+      end
+
+
+      V_traj = PPTrajectory(pchip(tBreaks, V_grid));
+    end
+
+    function returnData = computeDataFromTrajectory(obj, ytraj)
+      tBreaks = ytraj.getBreaks();
+      numTimes = length(tBreaks);
+      % tPlanTraj = ytraj(7);
+      xTraj = ytraj(2:5);
+
+      y0 = ytraj.eval(0);
+      planMode = y0(1);
+      initialPhase = y0(3);
+
+      t_plan = obj.tPhaseTraj.eval();
+
+      dataCellArray = {};
+
+      for i = 1:numTimes
+
+        tempStruct = struct();
+        y = ytraj.eval(tBreaks(i));
+
+        % check if we have switched modes and need to reset the plan time clock
+        if(y(1) ~= planMode)
+          phase = y(3);
+
+          % clip phase to limits
+          phaseSpan = obj.tPhaseTraj.tspan;
+          phase = min(phase, phaseSpan(2));
+          phase = max(phase, phaseSpan(1));
+
+          t_plan = obj.tPhaseTraj.eval(phase);
+          planMode = y(1);
+        end
+
+        dataCellArray{i} = tempStruct;
+      end
+
+
+    end
+
+    function trajStruct = makeTrajectoriesFromCellArray(obj,t,cellArray)
+      singleDataStruct = cellArray{1};
+      numTimes = length(t);
+
+      fieldNames = fieldnames(singleDataStruct);
+
+      dataArray = struct();
+      for fn = fieldNames'
+        dataArray.(fn{1}) = zeros(numTimes, length(singleDataStruct.(fn{1})));
+      end
+
+      for i=1:numTimes
+        for fn = fieldNames'
+          dataArray.(fn{1})(i,:) = cellArray{i}.(fn{1});
+        end
+      end
+
+      trajStruct = struct();
+      for fn = fieldNames'
+        trajStruct.(fn{1}) = PPTrajectory(pchip(t, dataArray.(fn{1})));
+      end
+
+    end
+
+
 
   end 
 

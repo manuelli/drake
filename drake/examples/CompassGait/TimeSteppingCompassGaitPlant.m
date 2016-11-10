@@ -29,10 +29,10 @@ classdef TimeSteppingCompassGaitPlant < CompassGaitPlant
     function [t,y, te, ye, ie] = simulateWithConstantControlInputODE(obj, x_initial, tspan, u)
 
       % x_initial should be of size 4;
-      tic;
+      
       obj.dataHandle.data.u = u;      
       [t,y, te, ye, ie] = ode45(obj.odefun, tspan, x_initial, obj.odeOptions);
-      toc      
+            
     end
 
 

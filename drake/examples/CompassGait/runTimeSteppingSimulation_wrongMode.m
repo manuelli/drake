@@ -35,52 +35,22 @@ options = struct();
 options.Kp = 20;
 options.dampingRatio = 1.0;
 
-% set this to true if you want to run the dead-zone controller
+% specify which controller should run when there is uncertainty
 options.applyDeadZoneController = false;
+options.applyWrongModeController = false;
 
-options.hybridModeUncertainty.makingContactToeHeightThreshold = 0.05;
+
+% specify when you have the mode uncertainty, before contact, after contact
+% or both
+options.applyUncertaintyControllerOnMakingContact = true;
+options.applyUncertaintyControllerOnBreakingContact = false;
+
+% specify how much mode uncertainty you have
+options.hybridModeUncertainty.makingContactToeHeightThreshold = 0.03;
+options.hybridModeUncertainty.breakingContactTimeThreshold = 0.1;
 
 hzdController = HZDController(p, options);
 hzdController = hzdController.setNominalTrajectory(xtraj_opt, utraj_opt);
-
-
-%% Plot some of the hzd stuff
-fig = figure(3);
-clf(fig);
-hold on;
-fnplt(hzdController.hdTraj);
-title('h_d(theta)');
-hold off;
-
-fig = figure(4);
-clf(fig);
-hold on;
-fnplt(hzdController.hdTraj_deriv);
-title('h_d deriv(theta)');
-
-hold off;
-
-fig = figure(5);
-clf(fig);
-hold on;
-fnplt(hzdController.hdTraj_dderiv);
-title('h_d dderiv(theta)');
-
-hold off;
-
-
-% plot the partial h^2/partial theta^2 * (thetaDot)^2 trajectory
-
-thetaDot = hzdController.xPhaseTraj(4);
-thetaDotSquared = thetaDot.power(2);
-
-swingDot = hzdController.xPhaseTraj(3);
-swingDotSquared = swingDot.power(2);
-
-testTraj = hzdController.hdTraj_dderiv.times(thetaDotSquared);
-testTrajWrongMode = hzdController.hdTraj_dderiv.times(swingDotSquared);
-
-fig = figure(6);
 
 
 %% Run the simulation
@@ -88,12 +58,12 @@ s = TimeSteppingCompassGaitPlant(p.gamma);
 
 x0 = [xtraj_opt.eval(0.3)];
 
-swingVelDelta = -0.2;
+swingVelDelta = 0.0;
 stanceVelDelta = 0.0;
 x0_delta = [0;0;swingVelDelta;stanceVelDelta];
 
 x0_sim = [1;x0 + x0_delta]; % start in mode 1
-tspan = [0,2];
+tspan = [0,3];
 dt = 0.01; % controller is running at 100Hz here
 startTime = tic;
 d = TimeSteppingSimulationWithController(s, hzdController, tspan, dt, x0_sim); 
@@ -119,7 +89,7 @@ plotOptions = struct();
 plotOptions.allPlots = true;
 analyzeTrajectory(inputStruct, plotOptions);
 
-%% Some more analysis stuff for the wrong mode
+%% Some more analysis stuff for the other mode
 controlDataOtherCellArray = {};
 for i = 1:length(d.tControlGrid)
    t = d.tControlGrid(i);
@@ -142,9 +112,7 @@ figCounter = 15;
 fig = figure(figCounter);
 clf(fig);
 hold on;
-
-t_impact = d.hybridEventTimes(1);
-tspanPlot = [t_impact - 0.1, t_impact + 0.1];
+tspanPlot = [0.4, 0.6];
 
 h = fnplt(controlDataTrajs.u_mode_1.trim(tspanPlot));
 set(h, 'Color', 'b');
@@ -235,30 +203,14 @@ title('A_y in blue, B_y in red for correct mode');
 
 figCounter = figCounter + 1;
 
+%%
 
+t = 0.5;
+x = xtraj.eval(t)
 
-%% 
-fig = figure(figCounter);
-clf(fig);
-hold on;
+xOther = hzdController.cgUtils.transformStateToOtherMode(x);
 
-
-phaseSpan = [0, 0.1]
-
-h = fnplt(testTraj.trim(phaseSpan));
-set(h, 'Color', 'b');
-
-
-h = fnplt(testTrajWrongMode.trim(phaseSpan));
-set(h, 'Color', 'r');
-hold off;
-
-title('h_d_dderiv thetaDotSquared, blue is correct mode');
-
-figCounter = figCounter + 1;
-
-
-
+cData = hzdController.getStandardControlInput(xOther)
 
 
 

@@ -23,7 +23,7 @@ t_init{2} = linspace(0,tf-t1,N(2));
 
 %initial guess for trajectories
 traj_init{1}.x0 = x0;
-traj_init{2}.x0 = x1;
+traj_init{2}.x0 = x0;
 
 traj_opt = traj_opt.addModeStateConstraint(1,BoundingBoxConstraint([0;-inf(3,1)],[0;inf(3,1)]),1);
 traj_opt = traj_opt.addModeStateConstraint(1,BoundingBoxConstraint([.1;-inf(3,1)],inf(4,1)),N(1));

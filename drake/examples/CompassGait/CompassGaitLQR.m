@@ -73,14 +73,14 @@ classdef CompassGaitLQR
       end
     end
 
-    function [tGrid, S_traj] = solveRicattiEquationForwards(obj, S_initial, tspan)
+    function [tGrid, S_traj] = solveRicattiEquationForwards(obj, S_final, tspan)
       t_final = tspan(2);
       % we need to solve backwards in time, so need to be careful here
       % change of variables to r = t_final - t. Then tspan is the same
       % but we put a -1 in front of our dxdt because we have reversed direction
       % of integration
       odefun = @(t,S_vec) -obj.ricattiDifferentialEquation(t_final - t,S_vec);
-      [t, S_vec_traj] = ode45(odefun, tspan, S_initial(:));
+      [t, S_vec_traj] = ode45(odefun, tspan, S_final(:));
       S_traj = reshape(S_vec_traj, length(t),4,4);
       tGrid = t_final - t; % remember to pass reversed time
     end
@@ -90,7 +90,8 @@ classdef CompassGaitLQR
 
       S = reshape(S_vec,4,4); % convert vector to a matrix
       x = obj.xtraj.eval(t);
-      [A,B] = obj.stancePlant.linearize(t,x,0);
+      u = obj.utraj.eval(t); 
+      [A,B] = obj.stancePlant.linearize(t,x,u);
       dSdt = -(A'*S + S*A + obj.Q - S*B*obj.R_inv * B'*S); % we are solving forwards in time
 
       % now we should put dSdt into vector form,

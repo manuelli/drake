@@ -27,6 +27,7 @@ function returnData = TimeSteppingSimulationWithController(plant, controller, ts
     xFull_current = [currentMode;x_current];
     [u, controlData] = controller.tick(t_current,xFull_current);
 
+
     controlDataCellArray{end+1} = controlData;
     t_start = t_current;
     t_end = t_current + dt;
@@ -67,7 +68,7 @@ function returnData = TimeSteppingSimulationWithController(plant, controller, ts
   returnData.tGrid = tGridUnique;
   returnData.tControlGrid = tControlGridUnique;
 
-  
+
   % returnData.ytraj = ytraj;
   % returnData.controlDataCellArray = controlDataCellArray;
 
