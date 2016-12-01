@@ -14,6 +14,72 @@ classdef CompassGaitUtils
       obj.swapMatrixSmall = temp;
     end
 
+    function otherMode = getOtherHybridMode(obj, hybridMode)
+      if (hybridMode == 1)
+        otherMode = 2;
+      else
+        otherMode = 1;
+      end
+    end
+
+    function vecLocal = transformVectorGlobalToLocal(hybridMode, vecGlobal)
+
+      if(hybridMode == 1)
+        vecLocal = vecGlobal;
+      else
+        vecLocal(1) = vecGlobal(2);
+        vecLocal(2) = vecGlobal(1);
+        vecLocal(3) = vecGlobal(4);
+        vecLocal(4) = vecGlobal(3);
+      end
+
+    end
+
+    function uLocal = transformGlobalControlToLocalControl(obj, hybridMode, uGlobal)
+      if (hybridMode == 1)
+        uLocal = uGlobal;
+      else
+        uLocal = -uGlobal;
+      end
+    end
+
+    function uGlobal = transformLocalControlToGlobalControl(obj, hybridMode, uLocal)
+      if (hybridMode == 1)
+        uGlobal = uLocal;
+      else
+        uGlobal = -uLocal;
+      end
+    end
+
+    function x_local = transformGlobalStateToLocalState(obj, hybridMode, x_global)
+      if (hybridMode == 1)
+        % left leg swing
+        x_local = [x_global.qL; x_global.qR; x_global.vL; x_global.vR];
+      else
+        % hybridMode = 2, so we are in right leg swing
+        x_local = [x_global.qR; x_global.qL; x_global.vR; x_global.vL];
+      end
+    end
+
+    % x_local = [q_swing, q_stance, v_swing, v_stance]
+    % x_global has fields qL, qR, vL, vR
+    % hybridMode 1 is left leg swing
+    function x_global = transformLocalStateToGlobalState(obj, hyrbidMode, x_local)
+      x_global = struct();
+
+      if (hyrbidMode == 1)
+        x_global.qL = x_local(1);
+        x_global.qR = x_local(2);
+        x_global.vL = x_local(3);
+        x_global.vR = x_local(4);
+      else
+        x_global.qL = x_local(2);
+        x_global.qR = x_local(1);
+        x_global.vL = x_local(4);
+        x_global.vR = x_local(3);
+      end
+    end
+
     % transform it into some global coordinates
     function [x_global, returnData] = transformStateToGlobal(obj, x)
       x_global = x;

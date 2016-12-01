@@ -35,6 +35,11 @@ classdef CompassGaitParticleFilter < handle
       defaultOptions.initializationPositionNoiseStdDev = 0.02;
       defaultOptions.initializationVelocityNoiseStdDev = 0.05;
 
+
+      defaultOptions.numTruthSpawningParticles = 5;
+      defaultOptions.truthParticlesStdDev_q = 0;
+      defaultOptions.truthParticlesStdDev_v = 0;
+
       obj.options_ = applyDefaults(options, defaultOptions);
     end
 
@@ -146,7 +151,24 @@ classdef CompassGaitParticleFilter < handle
       end
     end
 
-    function applyImportanceResampling(obj)
+    % helps to keep the filter from diverging or 'getting lost'
+    function addTruthParticles(obj, trueParticle, options)
+      for i=1:options.numParticles
+        obj.particleSet_{end+1} = CompassGaitParticle.copy(trueParticle);
+      end
+    end
+
+    function applyImportanceResampling(obj, options)
+
+      if nargin < 2
+        options = struct();
+        spawnTruthParticles = false;
+        numTruthParticles = 0;
+      else
+        spawnTruthParticles = true;
+        numTruthParticles = options.numTruthParticles;
+      end
+
       weightVector = zeros(numel(obj.particleSet_),1);
       for i=1:numel(obj.particleSet_)
         particle = obj.particleSet_{i};
@@ -162,6 +184,8 @@ classdef CompassGaitParticleFilter < handle
       idxVec = 0:numel(obj.particleSet_);
       out_val = interp1(cdfVec, idxVec, rand_vals);
 
+
+      % does the resampling
       newParticleSet = {};
       for i=1:obj.options_.numParticles
         idx = ceil(out_val(i));

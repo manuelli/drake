@@ -45,14 +45,14 @@ plant = TimeSteppingCompassGaitPlant(gammaIn);
 cgUtils = CompassGaitUtils();
 
 options = struct();
-options.initializationPositionNoiseStdDev = 0.02;
+options.initializationPositionNoiseStdDev = 0.01;
 options.initializationVelocityNoiseStdDev = 0.05;
 options.processNoiseStdDev_v = 0.1;
 
 
 options.measurementNoiseIMUStdDev = 0.005;
 options.measurementNoiseEncodersStdDev = 0.001;
-options.numParticles = 100;
+options.numParticles = 30;
 
 
 particleFilter = CompassGaitParticleFilter(plant, options);
@@ -96,8 +96,11 @@ hybridEventTimes = [];
 
 uGlobal = 0;
 
+truthParticleOptions = struct();
+truthParticleOptions.numParticles = 5;
+
 tic;
-profile on;
+% profile on;
 % do a bunch of forward simulations
 for i=1:numTimesteps
   % move the true particle
@@ -111,12 +114,17 @@ for i=1:numTimesteps
 
   % move the particles in the filter using the stochastic motion model
   particleFilter.applyMotionModel(0,dt);
-  particleSetArray{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
+  
 
+  % add some truth particles
+  particleFilter.addTruthParticles(trueParticle, truthParticleOptions);
+  
   % perform measurement update
   y = particleFilter.generateObservation(trueParticle,dt);
-  y = [trueParticle.x_.qL; trueParticle.x_.qR];
+%   y = [trueParticle.x_.qL; trueParticle.x_.qR];  
   particleFilter.applyMeasurementUpdate(y,dt);
+  
+  particleSetArray{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
 
   % do importance resampling
   particleFilter.applyImportanceResampling();
@@ -126,7 +134,7 @@ for i=1:numTimesteps
   tArray(end+1) = t_current;
   xLocalArray(:,end+1) = cgUtils.transformGlobalStateToLocalState(trueParticle.hybridMode_, trueParticle.x_);
 end
-profile viewer
+% profile viewer
 toc;
 
 %% Make Trajetory of true particle
@@ -159,7 +167,7 @@ plotData.times = tArray;
 plotParticles(plotData, fig)
 
 plotDataAfterResampling = plotData;
-plotDataAfterResampling.particleSetArray = particleSetArrayAfterImportanceResampling;
+plotDataAfterResampling.particleSetArray = particleSetArray;
 plotDataAfterResampling.plotWeights = true;
 fig = figure(figCounter);
 figCounter = figCounter + 1;
