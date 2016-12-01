@@ -20,4 +20,22 @@ classdef CompassGaitParticle < handle
     end
   end
 
+  methods (Static)
+    function newParticle = copy(particle)
+      inputData = struct();
+      inputData.hybridMode = particle.hybridMode_;
+      inputData.xGlobal = particle.x_;
+      newParticle = CompassGaitParticle(inputData);
+      newParticle.importanceWeight_ = particle.importanceWeight_;
+    end
+
+    function newParticleSet = copyParticleSet(particleSet)
+      newParticleSet = {};
+
+      for i=1:numel(particleSet)
+        newParticleSet{i} = CompassGaitParticle.copy(particleSet{i});
+      end
+    end
+  end
+
 end

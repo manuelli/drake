@@ -46,7 +46,6 @@ classdef TimeSteppingCompassGaitPlant < CompassGaitPlant
         dt = options.dt;
       end
 
-
       odeFunStochastic = @(t,x) obj.dynamics(t,[1;x],0) + processNoiseLocal;
 
       hybridEvent = false;
@@ -103,11 +102,16 @@ classdef TimeSteppingCompassGaitPlant < CompassGaitPlant
     % Everything is in LOCAL coordinates, (theta_swing, theta_stance)
     % x_initial is in local coordinates already
     % only need the hybrid mode for mapping the control input from global --> local
-    function [x_final, hybridSwitch, finalHybridMode] = simulateThroughHybridEvent(obj,hybridMode, x_initial, tspan, uGlobal, processNoiseGlobal)
+    % x_final is in local coordinates
+    function [x_final, hybridSwitch, finalHybridMode, outputData] = simulateThroughHybridEvent(obj,hybridMode, x_initial, tspan, uGlobal, processNoiseGlobal)
 
       if (nargin < 6)
         processNoiseGlobal = zeros(4,1);
       end
+
+      % just placeholder for data about the hybrid event
+      % fields: hybridEventTime, xMinus, xPlus. xMinus_mode, xPlus_mode
+      outputData = struct(); 
 
       uLocal = obj.cgUtils_.transformGlobalControlToLocalControl(hybridMode, uGlobal);
 
@@ -128,11 +132,18 @@ classdef TimeSteppingCompassGaitPlant < CompassGaitPlant
       if( hybridSwitch > 0)
         hybridSwitch = true;
         finalHybridMode = obj.cgUtils_.getOtherHybridMode(hybridMode);
+
         uLocal = obj.cgUtils_.transformGlobalControlToLocalControl(finalHybridMode, uGlobal);
         [xp, ~] = obj.collisionDynamics(1, 0, x_final);
         t_hybrid_guard = t(end);
         tspan_post_impact = [t_hybrid_guard, tspan(2)];
 
+        % record some debugging info
+        outputData.xMinus_mode = hybridMode;
+        outputData.xPlus_mode = finalHybridMode;
+        outputData.xMinus = x_final; % this is xm
+        outputData.xPlus = xp;
+        outputData.hybridEventTime = t_hybrid_guard;
 
         % [t,y,te,ye,ie] = obj.simulateWithConstantControlInputODEStochastic(xp, tspan_post_impact, uLocal, processNoiseGlobal);
 

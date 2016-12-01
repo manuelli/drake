@@ -15,6 +15,8 @@ v = CompassGaitVisualizer(r);
 %% Plot the nominal trajectory
 xtraj_single_step = xtraj.traj{2};
 xtraj_single_step = xtraj_single_step(2:5);
+
+close all;
 fig1 = figure(1);
 clf(fig1);
 
@@ -43,10 +45,14 @@ plant = TimeSteppingCompassGaitPlant(gammaIn);
 cgUtils = CompassGaitUtils();
 
 options = struct();
-options.initializationPositionNoiseStdDev = 0;
-options.initializationVelocityNoiseStdDev = 0;
-options.processNoiseStdDev_v = 0.2;
-options.numParticles = 10;
+options.initializationPositionNoiseStdDev = 0.02;
+options.initializationVelocityNoiseStdDev = 0.05;
+options.processNoiseStdDev_v = 0.1;
+
+
+options.measurementNoiseIMUStdDev = 0.005;
+options.measurementNoiseEncodersStdDev = 0.001;
+options.numParticles = 100;
 
 
 particleFilter = CompassGaitParticleFilter(plant, options);
@@ -57,12 +63,13 @@ particleFilter.nominalTraj_ = xtraj_single_step;
 
 
 %% Test the particle filter functionality
-t = 0.3;
+t_start = 0.3;
+t = t_start;
 x_full = xtraj.eval(t);
 hybridMode = x_full(1);
 x_local = x_full(2:end);
-t_f = 0.5;
-dt = 0.01;
+t_f = 1.5;
+dt = 0.005;
 numTimesteps = ceil((t_f-t)/dt);
 t_f = t + numTimesteps*dt;
 x_final = xtraj.eval(t_f);
@@ -74,66 +81,88 @@ x_final_global = cgUtils.transformLocalStateToGlobalState(x_final(1), x_final(2:
 
 particleFilter.initializeFilter(hybridMode, xGlobal);
 
-% close all;
-% fig1 = figure(1);
-particleFilter.plotParticleSet(particleFilter.particleSet_, fig1);
-hold on;
-scatter(xGlobal.qL, xGlobal.vL, 'g', 'filled');
-title('t = 0');
-hold off;
+inputData = struct('xGlobal',xGlobal);
+inputData.hybridMode = hybridMode;
+particle = CompassGaitParticle(inputData);
+trueParticle = CompassGaitParticle(inputData);
+
+trueParticleArray = {};
+particleSetArray = {};
+particleSetArrayAfterImportanceResampling = {};
+tArray = [];
+xLocalArray = [];
+
+hybridEventTimes = [];
+
+uGlobal = 0;
 
 tic;
-% profile on;
+profile on;
 % do a bunch of forward simulations
 for i=1:numTimesteps
+  % move the true particle
+  % don't use uncertainty for now
+  outputData = particleFilter.applyMotionModelSingleParticle(trueParticle,uGlobal,dt,struct('useUncertainty',false));
+  
+  if(isfield(outputData,'hybridEventTime'))
+     hybridEventTimes(end+1) = t_current + outputData.hybridEventTime;
+  end
+  trueParticleArray{end+1} = CompassGaitParticle.copy(trueParticle);
+
+  % move the particles in the filter using the stochastic motion model
   particleFilter.applyMotionModel(0,dt);
+  particleSetArray{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
+
+  % perform measurement update
+  y = particleFilter.generateObservation(trueParticle,dt);
+  y = [trueParticle.x_.qL; trueParticle.x_.qR];
+  particleFilter.applyMeasurementUpdate(y,dt);
+
+  % do importance resampling
+  particleFilter.applyImportanceResampling();
+  particleSetArrayAfterImportanceResampling{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
+
   t_current = t_current + dt;
+  tArray(end+1) = t_current;
+  xLocalArray(:,end+1) = cgUtils.transformGlobalStateToLocalState(trueParticle.hybridMode_, trueParticle.x_);
 end
-% profile viewer
+profile viewer
 toc;
 
-% fig2 = figure(2);
+%% Make Trajetory of true particle
+
+simTraj = PPTrajectory(pchip(tArray, xLocalArray));
+
+% visualize the trajectory
+v = CompassGaitVisualizer(plant, simTraj.getOutputFrame);
+v.playback(simTraj, struct('slider',true));
+
+fig = figure();
 hold on;
-particleFilter.plotParticleSet(particleFilter.particleSet_, fig2);
-scatter(x_final_global.qL, x_final_global.vL, 'g', 'filled');
-title('t = t_f');
+h = fnplt(simTraj,[1]);
+set(h, 'Color','b', 'DisplayName','swing');
+h = fnplt(simTraj,[2]);
+set(h, 'Color','r', 'DisplayName', 'stance');
 hold off;
 
+%% Interactive plotting
+figCounter = 5;
+fig = figure(figCounter);
+figCounter = figCounter + 1;
 
-% tic;
-% % do a bunch of forward simulations
-% for i=1:numTimesteps
-%   particleFilter.applyMotionModel(0,dt);
-%   t_current = t_current + dt;
-% end
-% toc
-%   
+plotData = struct();
+plotData.particleFilter = particleFilter;
+plotData.particleSetArray = particleSetArray;
+plotData.trueParticleArray = trueParticleArray;
+plotData.times = tArray;
 
+plotParticles(plotData, fig)
 
+plotDataAfterResampling = plotData;
+plotDataAfterResampling.particleSetArray = particleSetArrayAfterImportanceResampling;
+plotDataAfterResampling.plotWeights = true;
+fig = figure(figCounter);
+figCounter = figCounter + 1;
 
+plotParticles(plotDataAfterResampling, fig);
 
-
-
-
-
-%% Plot the particle
-
-
-
-
-% xGlobal = cgUtils.transformLocalStateToGlobalState(hybridMode, x_local)
-% inputData = struct('xGlobal',xGlobal);
-% inputData.hybridMode = hybridMode;
-% particle = CompassGaitParticle(inputData);
-% 
-% 
-% % Try to simulate the particle forward with 0 control input for 0.2 seconds
-% dt = 0.7;
-% t_f = t + dt;
-% uGlobal = 0;
-% particleFilter.applyMotionModelSingleParticle(particle, uGlobal, dt);
-% 
-% x_final_global = particle.x_
-% 
-% x_final_traj = xtraj.eval(t_f);
-% x_final_traj_global = cgUtils.transformLocalStateToGlobalState(x_final_traj(1), x_final_traj(2:end))
