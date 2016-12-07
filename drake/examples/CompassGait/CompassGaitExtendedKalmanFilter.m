@@ -95,6 +95,22 @@ classdef CompassGaitExtendedKalmanFilter < handle
     end
 
 
+    % this only applies the reset map. It doesn't apply the motion model
+    function applyResetMap(obj)
+      resetMapJacobian = obj.plant_.getResetMapJacobian(obj.xLocal_);
+
+      t = 0;
+      u = 0;
+      [xp, nextMode] = obj.plant_.collisionDynamics(obj.hybridMode_, t, obj.xLocal_, u);
+
+      sigmaPlus = resetMapJacobian*obj.sigma_*resetMapJacobian';
+
+      obj.sigma_ = sigmaPlus;
+      obj.xLocal_ = xp;
+      obj.hybridMode_ = nextMode;
+    end
+
+
     % note that y is in global coordinates
     function kalmanFilterUpdate(obj,uGlobal,dt,y_obs)
 

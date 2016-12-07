@@ -17,22 +17,18 @@ xtraj_single_step = xtraj.traj{2};
 xtraj_single_step = xtraj_single_step(2:5);
 
 close all;
-fig1 = figure(1);
-clf(fig1);
 
-fig2 = figure(2);
-clf(fig2);
 
 %% Set simulation parameters
 plant = TimeSteppingCompassGaitPlant(gammaIn);
 cgUtils = CompassGaitUtils();
 t_start = 0.5;
 t = t_start;
-dt = 0.01;
+dt = 0.005;
 x_full = xtraj.eval(t);
 hybridMode = x_full(1);
 x_local = x_full(2:end);
-t_f = 1.1;
+t_f = 1.5;
 
 numTimesteps = ceil((t_f-t)/dt);
 t_f = t + numTimesteps*dt;
@@ -46,6 +42,10 @@ x_final_global = cgUtils.transformLocalStateToGlobalState(x_final(1), x_final(2:
 %% Setup the utilities
 
 
+runOptions = struct();
+runOptions.useParticleFilter = true;
+runOptions.useEKF = true;
+
 options = struct();
 options.initializationPositionNoiseStdDev = 0.01;
 options.initializationVelocityNoiseStdDev = 0.05;
@@ -54,9 +54,12 @@ options.processNoiseStdDev_v = 0.02;
 options.processNoiseStdDev_v = 0.1;
 
 
-options.measurementNoiseIMUVar = dt*0.1;
+options.measurementNoiseIMUVar = dt*0.01;
 options.measurementNoiseEncodersVar = dt*0.01;
 options.numParticles = 100;
+
+truthParticleOptions = struct();
+truthParticleOptions.numParticles = 0;
 
 
 
@@ -76,8 +79,9 @@ observationOptions.addNoise = false;
 
 %% Test the particle filter functionality
 
-
-particleFilter.initializeFilter(hybridMode, xGlobal);
+if runOptions.useParticleFilter
+  particleFilter.initializeFilter(hybridMode, xGlobal);
+end
 
 ekf.initializeFilter(hybridMode, xGlobal);
 
@@ -99,19 +103,24 @@ hybridEventTimes = [];
 
 uGlobal = 0;
 
-truthParticleOptions = struct();
-truthParticleOptions.numParticles = 1;
+particleFilterActive = false;
+particleFilter.particleSet_ = {};
 
 tic;
 % profile on;
 % do a bunch of forward simulations
 for i=1:numTimesteps
+
+  hybridEvent = false; % helper var
+
   % move the true particle
   % don't use uncertainty for now
   outputData = particleFilter.applyMotionModelSingleParticle(trueParticle,uGlobal,dt,struct('useUncertainty',false));
   
+  
   if(isfield(outputData,'hybridEventTime'))
      hybridEventTimes(end+1) = t_current + outputData.hybridEventTime;
+     hybridEvent = true;
   end
   
   trueParticleArray{end+1} = CompassGaitParticle.copy(trueParticle);
@@ -119,34 +128,88 @@ for i=1:numTimesteps
   % move the particles in the filter using the stochastic motion model
 %   particleFilter.applyMotionModel(0,dt);
 
-  % apply the motion model
-  ekf.applyMotionModel(uGlobal, dt);
 
+  % if needed, apply the reset map to the ekf
+  if hybridEvent
+    ekf.applyResetMap();
+  end
+  
   % apply the measurement update
 
-  [y, yParticle] = particleFilter.generateObservation(trueParticle,dt, observationOptions);
+  [y, yParticle] = particleFilter.generateObservation(trueParticle, dt, observationOptions);
 
   observationArray{end+1} = yParticle; % record the observations that we had
 
-  % for now we will tell the EKF the correct hybrid mode
-  ekf.applyMeasurementUpdate(trueParticle.hybridMode_, y);
-  kalmanFilterParticleArray{end+1} = ekf.getKalmanFilterStateAsParticle();
-  kalmanFilterParticleBarArray{end+1} = ekf.getKalmanFilterBarStateAsParticle();
+  if runOptions.useEKF
+    % for now we will tell the EKF the correct hybrid mode
+    % apply the motion model
+    ekf.applyMotionModel(uGlobal, dt);
+    ekf.applyMeasurementUpdate(trueParticle.hybridMode_, y);
+    kalmanFilterParticleArray{end+1} = ekf.getKalmanFilterStateAsParticle();
+    kalmanFilterParticleBarArray{end+1} = ekf.getKalmanFilterBarStateAsParticle();
+  end
 
-  
 
-  % add some truth particles
-  % particleFilter.addTruthParticles(trueParticle, truthParticleOptions);
-  
-  % perform measurement update
-%   y = [trueParticle.x_.qL; trueParticle.x_.qR];  
-  % particleFilter.applyMeasurementUpdate(y,dt);
-  
-  % particleSetArray{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
+  if runOptions.useParticleFilter
+    
+    if (~particleFilterActive)
+      kfParticle  = kalmanFilterParticleArray{end};
+      xLocal = cgUtils.transformGlobalStateToLocalState(kfParticle.hybridMode_, kfParticle.x_);
+      stanceAngle = xLocal(2);
+      
+      if (stanceAngle < 0)
+        sigmaTest = 2*kfParticle.sigma_;
+        returnData = particleFilter.initializeFilter(kfParticle.hybridMode_, kfParticle.x_, struct('sigmaGlobal', kfParticle.sigma_));
+        if (returnData.hitHybridGuard)
+           
+          disp('activating particle filter')
+          particleFilter.initializeFilter(kfParticle.hybridMode_, kfParticle.x_, struct('sigmaGlobal', kfParticle.sigma_));
+          pfActivationMode = kfParticle.hybridMode_;
+          particleFilterActive = true;
+        end
+      end
+    end
+    
+    if (particleFilterActive)    
+      % apply motion model
+      particleFilter.applyMotionModel(0,dt);
 
-  % % do importance resampling
-  % particleFilter.applyImportanceResampling();
-  % particleSetArrayAfterImportanceResampling{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
+      % store the particle set
+      particleSetArray{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
+
+      % HACK: add truth particles if necessary
+  %     particleFilter.addTruthParticles(trueParticle, truthParticleOptions);
+
+      % apply the measurement update
+      particleFilter.applyMeasurementUpdate(y,dt);
+      particleFilter.applyImportanceResampling();
+
+    % store the particle set after importance resampling
+      particleSetArrayAfterImportanceResampling{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
+    else
+      % otherwise store empty ones
+      particleSetArray{end+1} = {};
+      particleSetArrayAfterImportanceResampling{end+1} = {};
+    end
+    
+    
+    % deactivate PF when all in the next mode
+    if (particleFilterActive & (trueParticle.hybridMode_ ~= pfActivationMode))
+      if ((particleFilter.particleSet_{1}.hybridMode_ ~= pfActivationMode) && CompassGaitParticle.allParticlesInSameMode(particleFilter.particleSet_))
+        disp('deactivating PF');
+        particleFilterActive = false;
+      end
+%       kfParticle  = kalmanFilterParticleArray{end};
+%       xLocal = cgUtils.transformGlobalStateToLocalState(kfParticle.hybridMode_, kfParticle.x_);
+%       stanceAngle = xLocal(2);
+%       if (stanceAngle > 0.155)
+%         particleFilterActive = false;
+%         disp('deactivating PF');
+%       end
+    end
+    
+    
+  end
 
   t_current = t_current + dt;
   tArray(end+1) = t_current;
@@ -163,25 +226,6 @@ simTraj = PPTrajectory(pchip(tArray, xLocalArray));
 v = CompassGaitVisualizer(plant, simTraj.getOutputFrame);
 v.playback(simTraj, struct('slider',true));
 
-% fig = figure();
-% hold on;
-% h = fnplt(simTraj,[1]);
-% set(h, 'Color','b', 'DisplayName','swing');
-% h = fnplt(simTraj,[2]);
-% set(h, 'Color','r', 'DisplayName', 'stance');
-% hold off;
-
-% fig = figure(2);
-% clf(fig);
-% hold on;
-% fnplt(xtraj_single_step, [1,3]);
-% fnplt(xtraj_single_step, [2,4]);
-
-% idx = 1;
-% particle = kalmanFilterParticleArray{idx};
-% ekf.plotKalmanFilterState(particle);
-
-% hold off;
 
 %% Interactive plotting
 figCounter = 5;
@@ -189,13 +233,20 @@ fig = figure(figCounter);
 figCounter = figCounter + 1;
 
 plotData = struct();
-plotData.particleFilter = particleFilter;
 plotData.ekf = ekf;
-% plotData.particleSetArray = particleSetArray;
+plotData.particleFilter = particleFilter;
 plotData.trueParticleArray = trueParticleArray;
-plotData.kalmanFilterParticleArray = kalmanFilterParticleArray;
 plotData.observationArray = observationArray;
 plotData.times = tArray;
+
+if runOptions.useEKF
+  plotData.kalmanFilterParticleArray = kalmanFilterParticleArray;
+end
+
+if runOptions.useParticleFilter
+%   plotData.particleSetArray = particleSetArray;
+  plotData.particleSetArray = particleSetArrayAfterImportanceResampling;
+end
 
 plotParticles(plotData, fig)
 

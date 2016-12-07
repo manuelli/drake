@@ -36,6 +36,20 @@ classdef CompassGaitParticle < handle
         newParticleSet{i} = CompassGaitParticle.copy(particleSet{i});
       end
     end
+
+
+    function sameMode = allParticlesInSameMode(particleSet)
+      sameMode = true;
+      hybridMode = particleSet{1}.hybridMode_;
+      for i=1:numel(particleSet)
+        if (particleSet{i}.hybridMode_ ~= hybridMode)
+          sameMode = false;
+          return;
+        end
+      end
+    end
+
+
   end
 
 end

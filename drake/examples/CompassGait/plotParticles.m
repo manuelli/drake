@@ -110,6 +110,8 @@ set(fig,'Visible', 'on')
     trueOptions = options;
     trueOptions.colorString = 'g';
 
+    particleFilter.plotNominalTraj(struct('nominalPlotType','position'));
+
     if (isfield(inputData,'trueParticleArray'))
       particleFilter.plotSingleParticle(inputData.trueParticleArray{idx}, trueOptions);
     end

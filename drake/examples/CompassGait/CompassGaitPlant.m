@@ -127,6 +127,16 @@ classdef CompassGaitPlant < HybridDrakeSystem
         
       end        
     end
+
+    % the output of this will be 4 x 4
+    function dxpdxm = getResetMapJacobian(obj, x)
+      mode = 0;
+      t = 0;
+      u = 0;
+      [xp, mode, status, dxp] = obj.collisionDynamics(mode, t, x, u);
+
+      dxpdxm = dxp(:,3:6); % should be 4 x 4
+    end
     
   end
   

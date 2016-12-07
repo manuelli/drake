@@ -22,6 +22,32 @@ classdef CompassGaitUtils
       end
     end
 
+    % transforms covariance matrix in local coords to global coords
+    function sigmaGlobal = transformLocalToGlobalCovarianceMatrix(obj, hybridMode, sigmaLocal)
+      if (hybridMode == 1)
+        sigmaGlobal = sigmaLocal;
+        return;
+      end
+
+      idxMap = [2,1,4,3];
+      sigmaGlobal = zeros(4,4);
+      for i=1:4
+        for j=1:4
+          sigmaGlobal(idxMap(i), idxMap(j)) = sigmaLocal(i,j);
+        end
+      end
+
+    end
+
+    function sigmaLocal = transformGlobalToLocalCovarianceMatrix(obj, hybridMode, sigmaGlobal)
+      % if (hybridMode == 1)
+      %   sigmaLocal = sigmaGlobal;
+      %   return;
+      % end
+
+      sigmaLocal = obj.transformLocalToGlobalCovarianceMatrix(hybridMode,sigmaGlobal);
+    end
+
     function vecLocal = transformVectorGlobalToLocal(hybridMode, vecGlobal)
 
       if(hybridMode == 1)
@@ -31,6 +57,16 @@ classdef CompassGaitUtils
         vecLocal(2) = vecGlobal(1);
         vecLocal(3) = vecGlobal(4);
         vecLocal(4) = vecGlobal(3);
+      end
+
+    end
+
+    function yLocal = transformObservationGlobalToLocal(obj, hybridMode, y_obs)
+      if(hybridMode == 1)
+        yLocal = y_obs;
+      else
+        yLocal(1) = y_obs(2);
+        yLocal(2) = y_obs(1);
       end
 
     end

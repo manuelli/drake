@@ -42,31 +42,56 @@ classdef CompassGaitParticleFilter < handle
       defaultOptions.truthParticlesStdDev_v = 0;
 
       obj.options_ = applyDefaults(options, defaultOptions);
+
+      % note this is really covariance matrix
+      obj.measurementNoiseCovarianceMatrixUnscaled_ = ones(2,2)*obj.options_.measurementNoiseIMUVar+ eye(2)*obj.options_.measurementNoiseEncodersVar;
     end
 
     % say where to start the particles
-    function obj = initializeFilter(obj, hybridMode, xGlobal)
+    % xGlobal is just a vector here
+    function returnData = initializeFilter(obj, hybridMode, xGlobal, options)
+      returnData = struct();
+      returnData.hitHybridGuard = false;
+      if nargin < 4
+        options = struct();
+        options.sigmaGlobal = diag([obj.options_.initializationPositionNoiseStdDev^2, obj.options_.initializationPositionNoiseStdDev^2, obj.options_.initializationVelocityNoiseStdDev^2, obj.options_.initializationVelocityNoiseStdDev^2 ]);
+      end
+
+      xLocal = obj.cgUtils_.transformGlobalStateToLocalState(hybridMode, xGlobal);
+      sigmaLocal = obj.cgUtils_.transformGlobalToLocalCovarianceMatrix(hybridMode, options.sigmaGlobal);
+
       obj.particleSet_ = {}; % clear any existing particle set
-      for i=1:obj.options_.numParticles
+
+      % discard any particles on wrong side of the guard
+      counter = 0;
+      while(counter < obj.options_.numParticles)
         inputData = struct();
         inputData.hybridMode = hybridMode;
-        xGlobalNew = struct();
 
+        xLocalNew = mvnrnd(xLocal, sigmaLocal);
 
-        xGlobalNew = struct();
-        xGlobalNew.qL = xGlobal.qL + normrnd(0,obj.options_.initializationPositionNoiseStdDev);
-        xGlobalNew.qR = xGlobal.qR + normrnd(0,obj.options_.initializationPositionNoiseStdDev);
+        % check that this particle isn't on wrong side of hybrid guard
+        if (obj.plant_.eventFunction(0,xLocalNew,0) < 0)
+          % disp('sampled a point on wrong side of guard, trying again')
+          % counter
+          returnData.hitHybridGuard = true;
+          continue;
+        end
 
-        xGlobalNew.vL = xGlobal.vL + normrnd(0,obj.options_.initializationVelocityNoiseStdDev);
-        xGlobalNew.vR = xGlobal.vR + normrnd(0,obj.options_.initializationVelocityNoiseStdDev);
+        xGlobalNew = obj.cgUtils_.transformLocalStateToGlobalState(hybridMode, xLocalNew);
+        % xGlobalNew.qL = xGlobal.qL + normrnd(0,obj.options_.initializationPositionNoiseStdDev);
+        % xGlobalNew.qR = xGlobal.qR + normrnd(0,obj.options_.initializationPositionNoiseStdDev);
+
+        % xGlobalNew.vL = xGlobal.vL + normrnd(0,obj.options_.initializationVelocityNoiseStdDev);
+        % xGlobalNew.vR = xGlobal.vR + normrnd(0,obj.options_.initializationVelocityNoiseStdDev);
 
         inputData.xGlobal = xGlobalNew;
 
         obj.particleSet_{end+1} = CompassGaitParticle(inputData);
-
-        % note this is really covariance matrix
-        obj.measurementNoiseCovarianceMatrixUnscaled_ = ones(2,2)*obj.options_.measurementNoiseIMUVar+ eye(2)*obj.options_.measurementNoiseEncodersVar;
+        counter = counter + 1;        
       end
+      % note this is really covariance matrix
+        obj.measurementNoiseCovarianceMatrixUnscaled_ = ones(2,2)*obj.options_.measurementNoiseIMUVar+ eye(2)*obj.options_.measurementNoiseEncodersVar;
     end
 
     function plotParticleSet(obj, particleSet, figHandle, options)
@@ -80,6 +105,7 @@ classdef CompassGaitParticleFilter < handle
 
       defaultOptions = struct();
       defaultOptions.plotType = 'left';
+      defaultOptions.nominalPlotType = 'normal';
       options = applyDefaults(options, defaultOptions);
 
       figure(figHandle);
@@ -88,7 +114,7 @@ classdef CompassGaitParticleFilter < handle
 
       % fnplt(obj.nominalTraj_, [1,3]);
       % fnplt(obj.nominalTraj_, [2,4]);
-      obj.plotNominalTraj();
+      obj.plotNominalTraj(options);
 
       for i=1:numel(particleSet)
         particle = particleSet{i};
@@ -98,9 +124,24 @@ classdef CompassGaitParticleFilter < handle
       end
     end
 
-    function plotNominalTraj(obj)
-      fnplt(obj.nominalTraj_, [1,3]);
-      fnplt(obj.nominalTraj_, [2,4]);
+    function plotNominalTraj(obj, options)
+      if nargin < 2
+        options = struct();
+      end
+
+      defaultOptions.nominalPlotType = 'normal';
+
+      options = applyDefaults(options, defaultOptions);
+
+
+      if (strcmp(options.nominalPlotType, 'normal'))
+        fnplt(obj.nominalTraj_, [1,3]);
+        fnplt(obj.nominalTraj_, [2,4]);
+      else
+        fnplt(obj.nominalTraj_, [1, 2]);
+        fnplt(obj.nominalTraj_, [2, 1]);
+      end
+        
     end
 
     function plotSingleParticle(obj, particle, options)
@@ -150,10 +191,18 @@ classdef CompassGaitParticleFilter < handle
     end
 
     % propagate forwards by a given amount
-    function applyMotionModel(obj, uGlobal, dt)
+    function applyMotionModel(obj, uGlobal, dt, options)
+      if nargin < 4
+        options = struct();
+      end
+      defaultOptions = struct();
+      defaultOptions.useUncertainty = true;
+
+      options = applyDefaults(options, defaultOptions);
+
       for i=1:numel(obj.particleSet_)
         particle = obj.particleSet_{i};
-        obj.applyMotionModelSingleParticle(particle, uGlobal, dt);
+        obj.applyMotionModelSingleParticle(particle, uGlobal, dt, options);
       end
     end
 
