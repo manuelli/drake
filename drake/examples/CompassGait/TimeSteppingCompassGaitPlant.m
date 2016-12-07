@@ -37,13 +37,32 @@ classdef TimeSteppingCompassGaitPlant < CompassGaitPlant
       [t,y, te, ye, ie] = ode45(obj.odefun, tspan, x_initial, obj.odeOptions);            
     end
 
-    % do some extra checking to see if we have changed modes, if so then run ode45
-    function [t, y, hybridEvent] = simulateWithConstantControlInputODE4(obj, x_initial, tspan, u, processNoiseLocal, dt)
+    function [x_final] = simulateWithConstantControlInputODE4IgnoreHybridGuard(obj, x_initial, tspan, u, processNoiseLocal, dt)
 
       if nargin < 6
         dt = obj.stepSize_;
       else
         dt = options.dt;
+      end
+
+      odeFunStochastic = @(t,x) obj.dynamics(t,[1;x],0) + processNoiseLocal;
+      % x_initial should be of size 4;
+      obj.dataHandle.data.u = u;
+      numSteps = max(ceil((tspan(2) - tspan(1))/dt),2);
+      tspanFull = linspace(tspan(1),tspan(2),numSteps);
+      
+      obj.dataHandle.data.u = u;      
+      [t,y] = ode4(odeFunStochastic, tspanFull, x_initial);
+
+      yPrime = y';
+      x_final = yPrime(:,end);
+    end
+
+    % do some extra checking to see if we have changed modes, if so then run ode45
+    function [t, y, hybridEvent] = simulateWithConstantControlInputODE4(obj, x_initial, tspan, u, processNoiseLocal, dt)
+
+      if nargin < 6
+        dt = obj.stepSize_;
       end
 
       odeFunStochastic = @(t,x) obj.dynamics(t,[1;x],0) + processNoiseLocal;
