@@ -7,7 +7,8 @@ classdef CompassGaitParticleFilter < handle
     tPrev_; % the last time
     t_; % current measurement update time, so we know how far to propagate the particles
     nominalTraj_;
-    measurementNoiseCovarianceMatrix_;
+    % measurementNoiseCovarianceMatrix_;
+    measurementNoiseCovarianceMatrixUnscaled_;
   end
 
   methods
@@ -29,8 +30,8 @@ classdef CompassGaitParticleFilter < handle
       defaultOptions.numParticles = 5;
       defaultOptions.processNoiseStdDev_q = 0;
       defaultOptions.processNoiseStdDev_v = 0.05; % these should be related by a square or something
-      defaultOptions.measurementNoiseIMUStdDev = 0.005;
-      defaultOptions.measurementNoiseEncodersStdDev = 0.001;
+      defaultOptions.measurementNoiseIMUVar = 0.005;
+      defaultOptions.measurementNoiseEncodersVar = 0.001;
 
       defaultOptions.initializationPositionNoiseStdDev = 0.02;
       defaultOptions.initializationVelocityNoiseStdDev = 0.05;
@@ -56,14 +57,15 @@ classdef CompassGaitParticleFilter < handle
         xGlobalNew.qL = xGlobal.qL + normrnd(0,obj.options_.initializationPositionNoiseStdDev);
         xGlobalNew.qR = xGlobal.qR + normrnd(0,obj.options_.initializationPositionNoiseStdDev);
 
-        xGlobalNew.vL = xGlobal.vL + normrnd(0,obj.options_.initializationPositionNoiseStdDev);
-        xGlobalNew.vR = xGlobal.vR + normrnd(0,obj.options_.initializationPositionNoiseStdDev);
+        xGlobalNew.vL = xGlobal.vL + normrnd(0,obj.options_.initializationVelocityNoiseStdDev);
+        xGlobalNew.vR = xGlobal.vR + normrnd(0,obj.options_.initializationVelocityNoiseStdDev);
 
         inputData.xGlobal = xGlobalNew;
 
         obj.particleSet_{end+1} = CompassGaitParticle(inputData);
 
-        obj.measurementNoiseCovarianceMatrix_ = ones(2,2)*obj.options_.measurementNoiseIMUStdDev + eye(2)*obj.options_.measurementNoiseEncodersStdDev;
+        % note this is really covariance matrix
+        obj.measurementNoiseCovarianceMatrixUnscaled_ = ones(2,2)*obj.options_.measurementNoiseIMUVar+ eye(2)*obj.options_.measurementNoiseEncodersVar;
       end
     end
 
@@ -76,13 +78,17 @@ classdef CompassGaitParticleFilter < handle
         options = struct();
       end
 
+      defaultOptions = struct();
+      defaultOptions.plotType = 'left';
+      options = applyDefaults(options, defaultOptions);
+
       figure(figHandle);
 
       hold on;
 
-      fnplt(obj.nominalTraj_, [1,3]);
-      fnplt(obj.nominalTraj_, [2,4]);
-
+      % fnplt(obj.nominalTraj_, [1,3]);
+      % fnplt(obj.nominalTraj_, [2,4]);
+      obj.plotNominalTraj();
 
       for i=1:numel(particleSet)
         particle = particleSet{i};
@@ -92,10 +98,19 @@ classdef CompassGaitParticleFilter < handle
       end
     end
 
+    function plotNominalTraj(obj)
+      fnplt(obj.nominalTraj_, [1,3]);
+      fnplt(obj.nominalTraj_, [2,4]);
+    end
+
     function plotSingleParticle(obj, particle, options)
       if nargin < 3
         options = struct();
       end
+
+      defaultOptions = struct();
+      defaultOptions.plotType = 'left';
+      options = applyDefaults(options, defaultOptions);
 
       if isfield(options, 'colorString')
         colorString = options.colorString;
@@ -103,13 +118,12 @@ classdef CompassGaitParticleFilter < handle
         colorString = obj.getParticlePlotColor(particle);
       end
 
-      if isfield(options, 'plotRightLeg')
-        if (options.plotRightLeg)
-          scatter(particle.x_.qR, particle.x_.vR, colorString, 'filled');
-          return;
-        end
-      else
+      if (strcmp(options.plotType, 'right'))
+        scatter(particle.x_.qR, particle.x_.vR, colorString, 'filled');
+      elseif (strcmp(options.plotType, 'left'))
         scatter(particle.x_.qL, particle.x_.vL, colorString, 'filled');
+      elseif (strcmp(options.plotType, 'position'))
+        scatter(particle.x_.qL, particle.x_.qR, colorString, 'filled');
       end
 
       
@@ -241,21 +255,42 @@ classdef CompassGaitParticleFilter < handle
     function applyMeasurementUpdateSingleParticle(obj, particle, y, dt)
       y_hat = [particle.x_.qL, particle.x_.qR];
       y = reshape(y,[1,2]);
-      particle.importanceWeight_ = mvnpdf(y_hat, y, obj.measurementNoiseCovarianceMatrix_/sqrt(dt));
-
-
-
-%       if (isnan(particle.importanceWeight_) || isinf(particle.importanceWeight_) || (particle.importanceWeight_ < 1e-5))
-%         temp = 0;
-%       end
-       % normpdf(y_hat(1),y(1), obj.options_.measurementNoiseStdDev/sqrt(dt)) * normpdf(y_hat(2),y(2), obj.options_.measurementNoiseStdDev/sqrt(dt));
-      
+      particle.importanceWeight_ = mvnpdf(y_hat, y, obj.getMeasurementNoiseCovarianceMatrix(dt));      
     end
 
-    % observation variance should scale by 1/dt, so stdDev goes like 1/sqrt(dt)
-    function y = generateObservation(obj, particle, dt)
-      mu = [particle.x_.qL;particle.x_.qR];
-      y = mvnrnd(mu, obj.measurementNoiseCovarianceMatrix_/sqrt(dt));
+    % observation variance should scale by 1/dt
+    function cov = getMeasurementNoiseCovarianceMatrix(obj, dt)
+      cov = 1/dt*obj.measurementNoiseCovarianceMatrixUnscaled_;
+    end
+
+    
+    function [y, yParticle] = generateObservation(obj, particle, dt, options)
+      if nargin < 4
+        options = struct();
+      end
+
+      defaultOptions = struct();
+      defaultOptions.addNoise = true;
+      options = applyDefaults(options, defaultOptions);
+
+      mu = [particle.x_.qL,particle.x_.qR];
+      covMatrix = obj.getMeasurementNoiseCovarianceMatrix(dt);
+      y = mvnrnd(mu, covMatrix);
+
+      if (~options.addNoise)
+        y = mu;
+      end
+
+      inputData = struct();
+      x_ = struct();
+      x_.qL = y(1);
+      x_.qR = y(2);
+      x_.vL = 0;
+      x_.vR = 0;
+      inputData.xGlobal = x_;
+      inputData.sigma = covMatrix;
+      inputData.hybridMode = particle.hybridMode_; % not really relevant for this one
+      yParticle = EKFParticle(inputData);
     end
 
     function particleSetCopy = getCopyOfParticleSet(obj)

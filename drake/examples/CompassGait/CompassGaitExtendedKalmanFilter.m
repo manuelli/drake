@@ -29,8 +29,8 @@ classdef CompassGaitExtendedKalmanFilter < handle
       % note these variances are for the cts time thing will need to be adjusted here
       defaultOptions.processNoiseStdDev_q = 0;
       defaultOptions.processNoiseStdDev_v = 0.05; % these should be related by a square or something
-      defaultOptions.measurementNoiseIMUStdDev = 0.005;
-      defaultOptions.measurementNoiseEncodersStdDev = 0.001;
+      defaultOptions.measurementNoiseIMUVar = 0.005;
+      defaultOptions.measurementNoiseEncodersVar = 0.001;
 
       defaultOptions.initializationPositionNoiseStdDev = 0.02;
       defaultOptions.initializationVelocityNoiseStdDev = 0.05;
@@ -52,7 +52,7 @@ classdef CompassGaitExtendedKalmanFilter < handle
       % this is the observation model
       obj.H_ = [eye(2),zeros(2,2)];
 
-      obj.measurementNoiseCovarianceMatrixUnscaled_ = ones(2,2)*obj.options_.measurementNoiseIMUStdDev^2 + eye(2)*obj.options_.measurementNoiseEncodersStdDev^2;
+      obj.measurementNoiseCovarianceMatrixUnscaled_ = ones(2,2)*obj.options_.measurementNoiseIMUVar + eye(2)*obj.options_.measurementNoiseEncodersVar;
 
     end
 
@@ -149,7 +149,6 @@ classdef CompassGaitExtendedKalmanFilter < handle
       cov = 1/dt*obj.measurementNoiseCovarianceMatrixUnscaled_;
     end
 
-
     % some plotting stuff
     function plotKalmanFilterState(obj, particle, options)
 
@@ -179,6 +178,10 @@ classdef CompassGaitExtendedKalmanFilter < handle
         scatter(particle.x_.qR, particle.x_.vR, colorString, 'filled');
         idx = [2,4];
         mu = [particle.x_.qR, particle.x_.vR];
+      elseif (strcmp(options.plotType, 'position'))
+        idx = [1,2];
+        mu = [particle.x_.qL, particle.x_.qR];
+        scatter(particle.x_.qL, particle.x_.qR, colorString, 'filled');
       else
         error('Invalid specicification of options.plotType');
       end
