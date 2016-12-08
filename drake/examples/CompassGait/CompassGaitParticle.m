@@ -49,6 +49,54 @@ classdef CompassGaitParticle < handle
       end
     end
 
+    function [modeParticleSets ] = sortParticlesIntoModes(particleSet)
+      modeParticleSets = struct();
+      mode1 = {};
+      mode2 = {};
+      for i=1:numel(particleSet)
+        particle = particleSet{i};
+        if (particle.hybridMode_ == 1)
+          mode1{end+1} = CompassGaitParticle.copy(particle);
+        else
+          mode2{end+1} = CompassGaitParticle.copy(particle);
+        end
+      end
+
+      modeParticleSets.mode1 = mode1;
+      modeParticleSets.mode2 = mode2;
+    end
+
+
+    % this probably only makes sense if all the particles are in the same mode
+    function avgParticle = avgParticleSet(particleSet)
+      cgUtils = CompassGaitUtils();
+      xtemp = zeros(4,1);
+      numParticles = numel(particleSet); 
+      for i=1:numParticles
+        p = particleSet{i};
+        xtemp = xtemp + cgUtils.transformGlobalStateToLocalState(p.hybridMode_, p.x_);
+      end
+
+      xAvg = xtemp/numParticles;
+      xAvgGlobal = cgUtils.transformLocalStateToGlobalState(p.hybridMode_, xAvg);
+
+      inputData.hybridMode = p.hybridMode_;
+      inputData.xGlobal = xAvgGlobal;
+      avgParticle = CompassGaitParticle(inputData);
+    end
+
+    function [returnData] = getAvgParticleInEachMode(particleSets)
+      returnData = CompassGaitParticle.sortParticlesIntoModes(particleSets);
+      
+      if(numel(returnData.mode1) > 0)
+        returnData.mode1_avg = CompassGaitParticle.avgParticleSet(returnData.mode1);
+      end
+
+      if(numel(returnData.mode2) > 0)
+        returnData.mode2_avg = CompassGaitParticle.avgParticleSet(returnData.mode2);
+      end
+    end
+
 
   end
 

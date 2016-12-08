@@ -32,10 +32,12 @@ clf(fig);
 set(fig,'Visible','off');
 numIdx = length(inputData.times);
 
+minorStep = 1.0/numIdx;
 particleFilter = inputData.particleFilter;
 
+
 sld = uicontrol('Style', 'slider', 'Min', 1, 'Max', numIdx, ...
-    'Value', 1, 'Callback', @showPlot, 'Position', [400 20 120 20]);
+    'Value', 1, 'Callback', @showPlot, 'Position', [400 20 120 20], 'SliderStep', [minorStep, 0.1]);
 
 set(fig,'Visible', 'on')
 
