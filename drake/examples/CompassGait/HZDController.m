@@ -29,7 +29,7 @@ classdef HZDController < SimpleController
   methods
     function obj = HZDController(compassGaitPlant, options)
       if nargin < 2
-        options = struct()
+        options = struct();
       end
 
 
@@ -316,7 +316,17 @@ classdef HZDController < SimpleController
       controlData.u_simple_blend = obj.computeSimpleBlendingController(x, d.alphaVal);
 
       
+    end
 
+    function [uGlobal,returnData] = getControlInputFromGlobalState(obj, t,hybridMode, xGlobal)
+      xLocal = obj.cgUtils.transformGlobalStateToLocalState(hybridMode, xGlobal);
+
+
+      % this wants a 5 x 1
+      returnData = obj.getStandardControlInput([1;xLocal]);
+      uLocal = returnData.u;
+      uGlobal = obj.cgUtils.transformLocalControlToGlobalControl(hybridMode, uLocal);
+      % transform control input back to global
     end
 
     function u = computeSimpleBlendingController(obj, x, alphaVal)
@@ -740,7 +750,7 @@ classdef HZDController < SimpleController
       if (nargin < 4)
         hzdOutputData = obj.computeHybridZeroDynamics(x);
       end
-
+      data = hzdOutputData;
       y = hzdOutputData.y;
       ydot = hzdOutputData.ydot;
       A_y = hzdOutputData.A_y;
@@ -768,6 +778,52 @@ classdef HZDController < SimpleController
       data.V_dot = V_dot;
       data.V_dot_constant = V_dot_constant;
       data.V_dot_linear = V_dot_linear;
+    end
+
+    function data = computeLyapunovDataFromGlobalState(obj, hybridMode, xGlobal, uGlobal)
+      xLocal = obj.cgUtils.transformGlobalStateToLocalState(hybridMode, xGlobal);
+      uLocal = obj.cgUtils.transformGlobalControlToLocalControl(hybridMode, uGlobal);
+
+      data = obj.computeLyapunovData([1;xLocal], uLocal);
+
+      % need to flip all the linear terms if in mode 2 because control input gets reversed
+      if (hybridMode == 2)
+        data.B_y = -data.B_y;
+        data.V_dot_linear = -data.V_dot_linear;
+      end
+    end
+
+
+    function [u,data] = computeUncertaintyAwareControlInputFromParticleSet(obj, particleSet, dt)
+      lyapData = {};
+      for i=1:numel(particleSet)
+        p = particleSet{i};
+        lyapData{end+1} = obj.computeLyapunovDataFromGlobalState(p.hybridMode_, p.x_);
+      end
+
+      data.lyapData = lyapData;
+
+      % do the optimization now
+      function costVal = costFun(uGlobal)
+        obj.robustCostFunction(particleSet, lyapData, dt, u);
+      end
+    end
+
+    function [costVal, returnData] = robustCostFunction(obj, particleSet, lyapData, dt, uGlobal)
+      V_next = [];
+      V_dot = [];
+
+      returnData = struct();
+
+      for i=1:numel(particleSet)
+        V_dot(end+1) = lyapData{i}.A_y + lyapData{i}.B_y*uGlobal;
+        V_next(end+1) =  lyapData{i}.V + V_dot(i)*dt;
+      end
+
+      returnData.V_dot = V_dot;
+      returnData.V_next = V_next;
+
+      costVal = sum(V_next);
     end
 
 
