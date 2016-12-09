@@ -64,7 +64,7 @@ x_final_global = cgUtils.transformLocalStateToGlobalState(x_final(1), x_final(2:
 runOptions = struct();
 runOptions.useParticleFilter = true;
 runOptions.useEKF = true;
-runOptions.deadzone = true;
+runOptions.deadzone = false;
 
 options = struct();
 options.initializationPositionNoiseStdDev = 0.01;
@@ -80,6 +80,14 @@ options.numParticles = 100;
 
 truthParticleOptions = struct();
 truthParticleOptions.numParticles = 0;
+
+controllerOptions = struct();
+
+% options include
+% - normal
+% - deadzone
+% - robust
+controllerOptions.type = 'normal'; % just standard controller
 
 
 
@@ -123,6 +131,7 @@ xLocalArray = [];
 hybridEventTimes = [];
 
 uGlobal = 0;
+simulatorInitialized = false;
 
 particleFilterActive = false;
 particleFilter.particleSet_ = {};
@@ -134,14 +143,28 @@ for i=1:numTimesteps
 
   hybridEvent = false; % helper var
 
-  % move the true particle
-  % don't use uncertainty for now
-
-  [uGlobal, controlReturnData] = hzdController.getControlInputFromGlobalState(t_current, trueParticle.hybridMode_, trueParticle.x_);
- 
-  if (runOptions.deadzone && particleFilterActive)
+  % just command 0 if this is the first time through the loop.
+  % otherwise can do uncertainty aware control input and stuff
+  if ~simulatorInitialized
     uGlobal = 0;
+    simulatorInitialized = true;
+  else
+    [uGlobal, controlReturnData] = hzdController.getControlInputFromGlobalState(t_current, trueParticle.hybridMode_, trueParticle.x_);
+    if (runOptions.deadzone && particleFilterActive)
+      uGlobal = 0;
+    end
+
+    if (particleFilterActive)
+      switch controllerOptions.type
+        case 'deadzone'
+          uGlobal = 0;
+        case 'robust'
+          uGlobal = hzdController.computeRobustControlFromParticleSet(particleFilter.particleSet_, dt);
+      end
+    end
   end
+ 
+  
   
   uArray(end+1) = uGlobal;
   

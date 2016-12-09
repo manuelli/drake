@@ -14,6 +14,8 @@ classdef HZDController < SimpleController
     Kd = 6;
     dampingRatio = 1;
     S; % this stores the Lyapunov function corresponding to the PD controller
+    A_lqr; % dynamics matrices for double integrator, just double integrator on hzd output
+    B_lqr;
 
     hdTraj;
     hdTraj_deriv;
@@ -53,6 +55,9 @@ classdef HZDController < SimpleController
       defaultOptions = struct();
       defaultOptions.Kp = 20;
       defaultOptions.dampingRatio = 1.0;
+      defaultOptions.Q = diag([10,1]);
+      defaultOptions.R = 0.05;
+      defaultOptions.useLQR = true;
 
       defaultOptions.applyUncertaintyControllerOnMakingContact = false;
       defaultOptions.applyUncertaintyControllerOnBreakingContact = false;
@@ -115,6 +120,18 @@ classdef HZDController < SimpleController
       obj.Kp = obj.options.Kp;
       obj.Kd = 2*sqrt(obj.Kp)*obj.options.dampingRatio;
       obj = obj.setupLyapunovFunction();
+
+      if (obj.options.useLQR)
+        A_lqr = zeros(2,2);
+        A_lqr(1,2) = 1;
+        B_lqr = [0;1];
+        [K,S] = lqr(A_lqr, B_lqr, obj.options.Q, obj.options.R);
+        obj.Kp = K(1);
+        obj.Kd = K(2);
+        obj.S = S;
+        obj.A_lqr = A_lqr;
+        obj.B_lqr = B_lqr;
+      end
 
       % this means it is a regular trajectory and we don't need to do all the mess from below
       if (~isa(obj.xtraj,'HybridTrajectory'))
@@ -318,7 +335,7 @@ classdef HZDController < SimpleController
       
     end
 
-    function [uGlobal,returnData] = getControlInputFromGlobalState(obj, t,hybridMode, xGlobal)
+    function [uGlobal, returnData] = getControlInputFromGlobalState(obj, t, hybridMode, xGlobal)
       xLocal = obj.cgUtils.transformGlobalStateToLocalState(hybridMode, xGlobal);
 
 
@@ -794,36 +811,52 @@ classdef HZDController < SimpleController
     end
 
 
-    function [u,data] = computeUncertaintyAwareControlInputFromParticleSet(obj, particleSet, dt)
+    function [uRobust,data] = computeRobustControlFromParticleSet(obj, particleSet, dt)
       lyapData = {};
       for i=1:numel(particleSet)
         p = particleSet{i};
-        lyapData{end+1} = obj.computeLyapunovDataFromGlobalState(p.hybridMode_, p.x_);
+        lyapData{end+1} = obj.computeLyapunovDataFromGlobalState(p.hybridMode_, p.x_, 0);
       end
 
       data.lyapData = lyapData;
 
       % do the optimization now
-      function costVal = costFun(uGlobal)
-        obj.robustCostFunction(particleSet, lyapData, dt, u);
+      function costVal = costFun(uIn)
+        [costVal, returnData] = obj.robustCostFunction(particleSet, lyapData, dt, uIn);
       end
+
+      data.costFun = @(uIn) costFun(uIn);
+      data.costFunComplete = @(uIn ) obj.robustCostFunction(particleSet, lyapData, dt, uIn);
+
+      u_opt_init = 0;
+      uRobust = fminunc(@(u) costFun(u), u_opt_init);
     end
 
     function [costVal, returnData] = robustCostFunction(obj, particleSet, lyapData, dt, uGlobal)
       V_next = [];
       V_dot = [];
+      y_ddot = [];
+      lqrCostArray = [];
 
       returnData = struct();
 
       for i=1:numel(particleSet)
-        V_dot(end+1) = lyapData{i}.A_y + lyapData{i}.B_y*uGlobal;
+        y = lyapData{i}.y;
+        ydot = lyapData{i}.ydot;
+        z = [y;ydot];
+        y_ddot(end+1) = lyapData{i}.A_y + lyapData{i}.B_y*uGlobal;
+        V_dot(end+1) = lyapData{i}.V_dot_constant + lyapData{i}.V_dot_linear*uGlobal;
         V_next(end+1) =  lyapData{i}.V + V_dot(i)*dt;
+
+        lqrCostArray(end+1) = uGlobal*obj.options.R*uGlobal + V_dot(i);
       end
 
+      returnData.y_ddot = y_ddot;
+      returnData.lqrCostArray = lqrCostArray;
       returnData.V_dot = V_dot;
       returnData.V_next = V_next;
 
-      costVal = sum(V_next);
+      costVal =1.0/numel(particleSet)*sum(lqrCostArray);
     end
 
 

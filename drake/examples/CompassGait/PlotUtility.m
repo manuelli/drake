@@ -21,7 +21,7 @@ classdef PlotUtility < handle
       else
         obj.figHandle_ = inputData.figHandle_;
       end
-      obj.numPlots_ = 2;
+      obj.numPlots_ = 3;
       obj.cgUtils_ = CompassGaitUtils();
     end
 
@@ -85,6 +85,37 @@ classdef PlotUtility < handle
       hold off;
       title('V')
 
+      obj.plotRobustCostFunction(particleSet);
+    end
+
+    function plotRobustCostFunction(obj, particleSet)
+      dt = 0.005; % just hacked for now
+      [u_opt, data] = obj.inputData_.hzdController.computeRobustControlFromParticleSet(particleSet, dt);
+
+      ustep = 0.01;
+      uRange = -5:ustep:5;
+      costVal = 0*uRange;
+
+      for i=1:length(uRange)
+        u = uRange(i);
+        costVal(i) = data.costFun(u);
+      end
+
+      idx = floor(get(obj.timeSlider_,'Value'));
+      uGlobalTraj = obj.inputData_.uArray(idx);
+
+      uGlobalSlider = get(obj.controlSlider_,'Value');
+
+      subplot(obj.numPlots_,1,3);
+      cla reset;
+      hold on;
+      plot(uRange, costVal, 'b')
+      scatter(uGlobalTraj, data.costFun(uGlobalTraj), 'filled', 'g');
+      scatter(uGlobalSlider, data.costFun(uGlobalSlider), 'filled', 'r');
+      ylabel('robust cost');
+      xlabel('control input');
+      title('Robust Cost Function');
+      hold off;
     end
 
     function returnData = getInfoForParticle(obj, particle, uGlobal)
@@ -115,7 +146,6 @@ classdef PlotUtility < handle
       obj.updatePlots(particleSet,uGlobal);
       titleString = strcat('t = ', num2str(t), ' u =    ', num2str(uGlobal));
       title(titleString);
-      
     end
 
     function resetControl(obj, source, event)
