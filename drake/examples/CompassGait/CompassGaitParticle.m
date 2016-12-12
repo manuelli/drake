@@ -8,6 +8,7 @@ classdef CompassGaitParticle < handle
     x_; % stores the state, has fields qL, qR, vL, vR
     hybridMode_; % can be 1 or 2, 1 for left leg swing, 2 for right left swing
     importanceWeight_;
+    optimizationWeight_; % weight for when we do robust control
     options_;
     dt_; % timestep of the simulation, needed for computing variance of measurement noise
   end
@@ -17,6 +18,12 @@ classdef CompassGaitParticle < handle
       obj.x_ = struct();
       obj.x_= inputData.xGlobal;
       obj.hybridMode_ = inputData.hybridMode;
+
+      if (isfield(inputData, 'optimizationWeight'))
+        obj.optimizationWeight_ = inputData.optimizationWeight;
+      else
+        obj.optimizationWeight_ = 1.0;
+      end
     end
   end
 

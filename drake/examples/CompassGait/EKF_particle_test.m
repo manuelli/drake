@@ -164,20 +164,32 @@ for i=1:numTimesteps
     end
   end
  
-  
-  
   uArray(end+1) = uGlobal;
+
+  % now record all the estimation stuff that went along with this control
+  trueParticleArray{end+1} = CompassGaitParticle.copy(trueParticle);
+
+  if runOptions.useEKF
+    kalmanFilterParticleArray{end+1} = ekf.getKalmanFilterStateAsParticle();
+  end
+
+  if runOptions.useParticleFilter
+    if particleFilterActive
+      particleSetArray{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
+    else
+      particleSetArray{end+1} = {};
+    end
+  end
   
+  % move the true particle forwards
   outputData = particleFilter.applyMotionModelSingleParticle(trueParticle,uGlobal,dt,struct('useUncertainty',false));
   
-  
+  % record any hybrid events that may have occurred
   if(isfield(outputData,'hybridEventTime'))
      hybridEventTimes(end+1) = t_current + outputData.hybridEventTime;
      hybridEvent = true;
   end
   
-  trueParticleArray{end+1} = CompassGaitParticle.copy(trueParticle);
-
   % move the particles in the filter using the stochastic motion model
 %   particleFilter.applyMotionModel(0,dt);
 
@@ -188,7 +200,6 @@ for i=1:numTimesteps
   end
   
   % apply the measurement update
-
   [y, yParticle] = particleFilter.generateObservation(trueParticle, dt, observationOptions);
 
   observationArray{end+1} = yParticle; % record the observations that we had
@@ -198,7 +209,7 @@ for i=1:numTimesteps
     % apply the motion model
     ekf.applyMotionModel(uGlobal, dt);
     ekf.applyMeasurementUpdate(trueParticle.hybridMode_, y);
-    kalmanFilterParticleArray{end+1} = ekf.getKalmanFilterStateAsParticle();
+    % kalmanFilterParticleArray{end+1} = ekf.getKalmanFilterStateAsParticle();
     kalmanFilterParticleBarArray{end+1} = ekf.getKalmanFilterBarStateAsParticle();
   end
 
@@ -228,7 +239,7 @@ for i=1:numTimesteps
       particleFilter.applyMotionModel(0,dt);
 
       % store the particle set
-      particleSetArray{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
+      % particleSetArray{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
 
       % HACK: add truth particles if necessary
   %     particleFilter.addTruthParticles(trueParticle, truthParticleOptions);
@@ -238,16 +249,13 @@ for i=1:numTimesteps
       particleFilter.applyImportanceResampling();
 
     % store the particle set after importance resampling
-      particleSetArrayAfterImportanceResampling{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
-    else
-      % otherwise store empty ones
-      particleSetArray{end+1} = {};
-      particleSetArrayAfterImportanceResampling{end+1} = {};
+      % particleSetArrayAfterImportanceResampling{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
     end
+
     
     
     % deactivate PF when all in the next mode
-    if (particleFilterActive & (trueParticle.hybridMode_ ~= pfActivationMode))
+    if (particleFilterActive && (trueParticle.hybridMode_ ~= pfActivationMode))
       if ((particleFilter.particleSet_{1}.hybridMode_ ~= pfActivationMode) && CompassGaitParticle.allParticlesInSameMode(particleFilter.particleSet_))
         disp('deactivating PF');
         particleFilterActive = false;
@@ -260,8 +268,6 @@ for i=1:numTimesteps
 %         disp('deactivating PF');
 %       end
     end
-    
-    
   end
 
   t_current = t_current + dt;
@@ -299,7 +305,7 @@ end
 
 if runOptions.useParticleFilter
 %   plotData.particleSetArray = particleSetArray;
-  plotData.particleSetArray = particleSetArrayAfterImportanceResampling;
+  plotData.particleSetArray = particleSetArray;
 end
 
 plotParticles(plotData, fig)
@@ -313,7 +319,7 @@ plotParticles(plotData, fig)
 % plotParticles(plotDataAfterResampling, fig);
 
 %% control input plot
-plotData.idxRange = 97:108;
+plotData.idxRange = 97:114;
 plotData.hzdController = hzdController;
 
 

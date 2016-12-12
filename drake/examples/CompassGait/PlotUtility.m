@@ -90,6 +90,10 @@ classdef PlotUtility < handle
 
     function plotRobustCostFunction(obj, particleSet)
       dt = 0.005; % just hacked for now
+      if (numel(particleSet) == 0)
+        disp('particle set is empty, not plotting robust cost function, returning');
+        return;
+      end
       [u_opt, data] = obj.inputData_.hzdController.computeRobustControlFromParticleSet(particleSet, dt);
 
       ustep = 0.01;
@@ -115,6 +119,106 @@ classdef PlotUtility < handle
       ylabel('robust cost');
       xlabel('control input');
       title('Robust Cost Function');
+      hold off;
+    end
+
+    function plotStandardControlInputForEachParticleInParticleSet(obj, particleSet)
+      
+      d = CompassGaitParticle.getAvgParticleInEachMode(particleSet);
+      modeSets = {};
+      modeSets{1} = d.mode1;
+      modeSets{2} = d.mode2;
+      num_mode = zeros(2,1);
+      mode_bar_plot_idx = {[],[]};
+      v_mode = {[],[]};
+      controlInput = {[],[]};
+
+      for modeIdx=1:2
+        num_mode(modeIdx) = numel(modeSets{modeIdx});
+        for i = 1:num_mode(modeIdx)
+          particle = modeSets{modeIdx}{i};
+          data = obj.getInfoForParticle(particle, 0);
+          v_mode{modeIdx}(end+1) = data.V;
+          controlInput{modeIdx}(end+1) = obj.inputData_.hzdController.getControlInputFromGlobalState(0,particle.hybridMode_, particle.x_);
+        end
+      end
+
+      mode_bar_plot_idx{1} = 1:num_mode(1);
+      mode_bar_plot_idx{2} = (num_mode(1) + 1):(num_mode(1) + num_mode(2));
+
+      subplot(2,1,1);
+      cla reset;
+      hold on;
+      if (num_mode(1) > 0)
+        bar(mode_bar_plot_idx{1}, v_mode{1}, 'r');
+      end
+      if (num_mode(2) > 0)
+        bar(mode_bar_plot_idx{2}, v_mode{2}, 'b')
+      end
+      title('Value function')
+      hold off;
+
+      
+
+      subplot(2,1,2);
+      cla reset;
+      hold on;
+      if (num_mode(1) > 0)
+        bar(mode_bar_plot_idx{1}, controlInput{1}, 'r');
+      end
+      if (num_mode(2) > 0)
+        bar(mode_bar_plot_idx{2}, controlInput{2}, 'b')
+      end
+      title('Standard Control Input for Each Particle')
+      hold off;
+    end
+
+
+    function plotControlOnBothSidesOfResetMap(obj, tBreaks, xtraj)
+      hybridMode = 1;
+      nextHybridMode = 2;
+      uNormal = [];
+      uReset = [];
+      uRobust = [];
+      uBlend = [];
+
+      tspan = tBreaks(end) - tBreaks(1);
+      tEnd = tBreaks(end);
+      tStart = tBreaks(1);
+      optimizationWeight = 1;
+
+      tHack = 0;
+      dtHack = 0.01;
+      for i=1:length(tBreaks)
+        t = tBreaks(i);
+        optimizationWeight = 1 - 0.5*(t - tStart)/tspan; % decreases from 1 to 0.5
+        optimizationWeightReset = 1-optimizationWeight;
+        xLocal = xtraj.eval(t);
+        xGlobal = obj.cgUtils_.transformLocalStateToGlobalState(hybridMode, xLocal);
+        particle = CompassGaitParticle(struct('hybridMode', hybridMode, 'xGlobal', xGlobal, 'optimizationWeight', optimizationWeight));
+
+        xPlusLocal = obj.inputData_.hzdController.compassGaitPlant.collisionDynamics(1,0,xLocal,0);
+        xPlusGlobal = obj.cgUtils_.transformLocalStateToGlobalState(nextHybridMode, xPlusLocal);
+        nextParticle = CompassGaitParticle(struct('hybridMode', nextHybridMode, 'xGlobal', xPlusGlobal, 'optimizationWeight', optimizationWeightReset));
+
+        uNormal(end+1) = obj.inputData_.hzdController.getControlInputFromGlobalState(tHack, particle.hybridMode_, particle.x_);
+
+        uReset(end+1) = obj.inputData_.hzdController.getControlInputFromGlobalState(tHack, nextParticle.hybridMode_, nextParticle.x_);
+
+        uBlend(end+1) = optimizationWeight* uNormal(end) + optimizationWeightReset* uReset(end)
+
+        particleSet = {particle, nextParticle};
+        uRobust(end+1) = obj.inputData_.hzdController.computeRobustControlFromParticleSet(particleSet, dtHack);
+      end
+
+
+      % now plot these three things
+      hold on;
+      plot(tBreaks, uNormal, 'b', 'DisplayName','u normal');
+      plot(tBreaks, uReset, 'r', 'DisplayName', 'post reset');
+      plot(tBreaks, uRobust, 'm', 'DisplayName', 'robust');
+      plot(tBreaks, uBlend, '--m', 'DisplayName', 'blend');
+      legend('show');
       hold off;
     end
 

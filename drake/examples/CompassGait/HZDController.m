@@ -55,8 +55,8 @@ classdef HZDController < SimpleController
       defaultOptions = struct();
       defaultOptions.Kp = 20;
       defaultOptions.dampingRatio = 1.0;
-      defaultOptions.Q = diag([10,1]);
-      defaultOptions.R = 0.05;
+      defaultOptions.Q = diag([10,2]); % [10,1] originals in comments
+      defaultOptions.R = 1; % 0.05
       defaultOptions.useLQR = true;
 
       defaultOptions.applyUncertaintyControllerOnMakingContact = false;
@@ -848,7 +848,10 @@ classdef HZDController < SimpleController
         V_dot(end+1) = lyapData{i}.V_dot_constant + lyapData{i}.V_dot_linear*uGlobal;
         V_next(end+1) =  lyapData{i}.V + V_dot(i)*dt;
 
-        lqrCostArray(end+1) = uGlobal*obj.options.R*uGlobal + V_dot(i);
+        % note that the control cost is in terms of yddot, not u. Because we
+        % did the original HZD controller design on the output variable y rather
+        % than the actual control u.
+        lqrCostArray(end+1) =particleSet{i}.optimizationWeight_*(y_ddot(i)*obj.options.R*y_ddot(i) + V_dot(i));
       end
 
       returnData.y_ddot = y_ddot;
