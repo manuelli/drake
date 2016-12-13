@@ -18,7 +18,8 @@ defaultOptions.u_const_across_transitions = true;
 defaultOptions.u_const_across_transitions_negate_sign = true;
 defaultOptions.stanceLegSweepAngleLowerBound = 0.2;
 defaultOptions.plot = true;
-
+defaultOptions.useDeltaUCost = false;
+defaultOptions.deltaUCostWeight = 1.0;
 
 
 options = applyDefaults(options, defaultOptions);
@@ -94,6 +95,23 @@ end
 
 % add the running cost
 traj_opt = traj_opt.addRunningCost(@cost);
+
+if options.useDeltaUCost
+  disp('adding delta u cost');
+  Q = options.deltaUCostWeight*[1,;-1]*[1,-1];
+  b = zeros(2,1);
+  for i=1:options.numKnotPoints-1
+    xind = [traj_opt.u_inds(1,i); traj_opt.u_inds(1,i+1)];
+    traj_opt = traj_opt.addCost(QuadraticConstraint(0,inf,Q,b), xind);
+  end
+  
+  % if we are also using this cost, then add a special one for final
+  if options.u_const_across_transitions
+    xind = [traj_opt.u_inds(1,1); traj_opt.u_inds(1,end)];
+    Q = options.deltaUCostWeight*ones(2,2);
+    traj_opt = traj_opt.addCost(QuadraticConstraint(0,inf,Q,b), xind);
+  end
+end
 
 
 %% add in the hybrid transition and periodicity constraints
@@ -192,6 +210,7 @@ R = 1;
 g = sum((R*u).*u,1);
 dg = [zeros(1,1+size(x,1)),2*u'*R];
 end
+
 
 function [h,dh] = finalcost(t,x)
 h=t;
