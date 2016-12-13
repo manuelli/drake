@@ -19,8 +19,10 @@ p = CompassGaitPlant(gammaOpt);
 options = struct();
 options.numKnotPoints = 40;
 options.plant = p;
-options.u_const_across_transitions = false;
+options.u_const_across_transitions = true;
 options.stanceLegSweepAngleLowerBound = 0.25;
+options.useDeltaUCost = true;
+options.deltaUCostWeight = 3.0;
 
 segmentIdx = xtraj.traj{8};
 xtraj_single_step = xtraj.traj{8};
@@ -68,14 +70,14 @@ runOptions.deadzone = false;
 
 options = struct();
 options.initializationPositionNoiseStdDev = 0.01;
-options.initializationVelocityNoiseStdDev = 0.05;
+options.initializationVelocityNoiseStdDev = 0.01;
 
-options.processNoiseStdDev_v = 0.02;
-options.processNoiseStdDev_v = 0.1;
+options.processNoiseStdDev_q = 0.01;
+options.processNoiseStdDev_v = 0.01;
 
 
-options.measurementNoiseIMUVar = dt*0.01;
-options.measurementNoiseEncodersVar = dt*0.01;
+options.measurementNoiseIMUVar = dt*0.0025;
+options.measurementNoiseEncodersVar = dt*0.0025;
 options.numParticles = 100;
 
 truthParticleOptions = struct();
