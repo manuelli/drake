@@ -320,7 +320,10 @@ classdef CompassGaitParticleFilter < handle
 
       defaultOptions = struct();
       defaultOptions.addNoise = true;
+      defaultOptions.bias = [0,0];
       options = applyDefaults(options, defaultOptions);
+
+      options.bias = reshape(options.bias, 1,2);
 
       mu = [particle.x_.qL,particle.x_.qR];
       covMatrix = obj.getMeasurementNoiseCovarianceMatrix(dt);
@@ -329,6 +332,9 @@ classdef CompassGaitParticleFilter < handle
       if (~options.addNoise)
         y = mu;
       end
+
+      % add the bias
+      y = y + options.bias;
 
       inputData = struct();
       x_ = struct();

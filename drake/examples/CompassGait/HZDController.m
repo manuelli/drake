@@ -22,6 +22,7 @@ classdef HZDController < SimpleController
     hdTraj_dderiv;
 
     xtraj; % the nominal trajectory that is passed in
+    xtrajDot;
     utraj;
 
     cgUtils;
@@ -55,8 +56,8 @@ classdef HZDController < SimpleController
       defaultOptions = struct();
       defaultOptions.Kp = 20;
       defaultOptions.dampingRatio = 1.0;
-      defaultOptions.Q = diag([10,2]); % [10,1] originals in comments
-      defaultOptions.R = 1; % 0.05
+      defaultOptions.Q = diag([10,1]); % [10,1] originals in comments
+      defaultOptions.R = 0.05; % 0.05
       defaultOptions.useLQR = true;
 
       defaultOptions.applyUncertaintyControllerOnMakingContact = false;
@@ -66,6 +67,8 @@ classdef HZDController < SimpleController
       defaultOptions.applyRobustController = false;
       % defaultOptions.applyMakingContactWrongModeController = false;
       % defaultOptions.applyBreakingContactWrongModeController = false;
+
+      defaultOptions.usePlanStanceLegVelocity = false;
 
       hmu = struct();
 
@@ -335,12 +338,17 @@ classdef HZDController < SimpleController
       
     end
 
-    function [uGlobal, returnData] = getControlInputFromGlobalState(obj, t, hybridMode, xGlobal)
+    % caution the returnData hasn't been converted to global coordinates necessarily
+    function [uGlobal, returnData] = getControlInputFromGlobalState(obj, t, hybridMode, xGlobal, options)
+      if nargin < 5
+        options = struct();
+      end
+
       xLocal = obj.cgUtils.transformGlobalStateToLocalState(hybridMode, xGlobal);
 
 
       % this wants a 5 x 1
-      returnData = obj.getStandardControlInput([1;xLocal]);
+      returnData = obj.getStandardControlInput([1;xLocal], options);
       uLocal = returnData.u;
       uGlobal = obj.cgUtils.transformLocalControlToGlobalControl(hybridMode, uLocal);
       % transform control input back to global
@@ -378,11 +386,26 @@ classdef HZDController < SimpleController
     end
 
 
-    function returnData = getStandardControlInput(obj, x)
+    function returnData = getStandardControlInput(obj, x, options)
+      if nargin < 3
+        options = struct();
+      end
+
+      defaultOptions = struct();
+      defaultOptions.usePlanStanceLegVelocity = false;
+
+      options = applyDefaults(options, defaultOptions);
+
       returnData = struct();
       lyapData = obj.computeLyapunovData(x,0);
 
       A_y = lyapData.A_y;
+
+      if obj.options.usePlanStanceLegVelocity
+        % disp('using planned stance leg velocity')
+        A_y = lyapData.A_y_plan_vel;
+      end
+
       B_y = lyapData.B_y;
       y = lyapData.y;
       ydot = lyapData.ydot;
@@ -690,6 +713,12 @@ classdef HZDController < SimpleController
       v = x(4:5);
       [H,C,B] = obj.compassGaitStancePlant.manipulatorDynamics(q,v);
 
+      x_plan = obj.xPhaseTraj.eval(phaseVar);
+      theta2dot_plan = x_plan(4);
+
+      A_y_theta = -h_d_dderiv*theta2dot^2;
+      A_y_theta_plan_vel = -h_d_dderiv*theta2dot_plan^2;
+      A_y_H = - h_deriv*inv(H)*C;
 
       A_y = -h_d_dderiv*theta2dot^2  - h_deriv*inv(H)*C;
       B_y = h_deriv*inv(H)*B;
@@ -697,6 +726,14 @@ classdef HZDController < SimpleController
       returnData = struct();
       returnData.A_y = A_y;
       returnData.B_y = B_y;
+      returnData.A_y_theta = A_y_theta;
+      returnData.A_y_H = A_y_H;
+      returnData.A_y_theta_plan_vel = A_y_theta_plan_vel;
+
+      % computed using planned stance leg velocity instead of measured. This reduces sensitivity to
+      % errors in estimated stance leg velocity.
+      returnData.A_y_plan_vel = A_y_H + A_y_theta_plan_vel;
+
       returnData.y = y;
       returnData.ydot = ydot;
       returnData.phaseVarUnclipped = phaseVarUnclipped;
@@ -783,7 +820,6 @@ classdef HZDController < SimpleController
       V_dot_constant = w_temp(1)*ydot + w_temp(2)*A_y;
       V_dot_linear = w_temp(2)*B_y;
 
-      data = struct();
       data.u = u;
       data.uStar = -A_y/B_y;
       data.y = y;
@@ -929,6 +965,45 @@ classdef HZDController < SimpleController
       data.V_dot = V_dot_vals(1);
       data.V_dot_other = V_dot_vals(2);
       u = uOpt;
+    end
+
+
+    function plotPhaseTrajectories(obj)
+      %% Plot some of the hzd stuff
+      numPlots = 4;
+      figCounter = 50;
+      fig = figure(figCounter);
+      clf(fig);
+      subplot(numPlots,1,1)
+      hold on;
+      fnplt(obj.hdTraj);
+      title('h_d(theta)');
+      hold off;
+
+      % fig = figure(4);
+      % clf(fig);
+      subplot(numPlots,1,2);
+      hold on;
+      fnplt(obj.hdTraj_deriv);
+      title('h_d deriv(theta)');
+
+      hold off;
+
+      % fig = figure(5);
+      % clf(fig);
+      subplot(numPlots,1,3)
+      hold on;
+      fnplt(obj.hdTraj_dderiv);
+      title('h_d dderiv(theta)');
+
+      hold off;
+
+      subplot(numPlots,1,4)
+      hold on;
+      fnplt(obj.uPhaseTraj);
+      title('uPhase(theta)');
+
+      hold off;
     end
 
 

@@ -73,6 +73,12 @@ classdef CompassGaitParticle < handle
       modeParticleSets.mode2 = mode2;
     end
 
+    function mode1Fraction = fractionOfParticlesInMode1(particleSet)
+      modeParticleSets = CompassGaitParticle.sortParticlesIntoModes(particleSet);
+      numParticles = numel(particleSet);
+      mode1Fraction = numel(modeParticleSets.mode1)*1.0/numParticles;
+    end
+
 
     % this probably only makes sense if all the particles are in the same mode
     function avgParticle = avgParticleSet(particleSet)

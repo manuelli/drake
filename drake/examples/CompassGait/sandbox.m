@@ -129,6 +129,47 @@ plot_dt = 0.005;
 tBreaks = 0.78:plot_dt:0.819;
 plotUtils.plotControlOnBothSidesOfResetMap(tBreaks, xtraj_opt);
 
+%% Test some HZD controller stuff
+theta = 0.02
+x = hzdController.xPhaseTraj.eval(theta)
+thetaDot = x(4);
+
+data = hzdController.computeHybridZeroDynamics([1;x]);
+
+data.A_y
+data.A_y_theta
+data.A_y_H
+
+
+%% Full state LQR
+Q = 1*diag([2,2,1,1]);
+R = 1;
+cgLQR = CompassGaitLQR(plant, xtraj_opt, utraj_opt);
+[tGrid, S_traj, K_traj] = cgLQR.computeLQRValueFunction(Q,R);
+
+
+fig = figure(55);
+clf(fig);
+subplot(2,1,1);
+hold on;
+plot(tGrid, K_traj(:,1), 'b', 'DisplayName','swing');
+plot(tGrid, K_traj(:,2), 'r', 'DisplayName','stance');
+legend('show');
+title('position gains');
+hold off;
+
+subplot(2,1,2);
+hold on;
+plot(tGrid, K_traj(:,3), 'b', 'DisplayName','swing');
+plot(tGrid, K_traj(:,4), 'r', 'DisplayName','stance');
+title('velocity gains');
+legend('show');
+hold off;
+
+K_traj(end,1)
+K_traj(end,2)
+
+
 
 
 %% Test lqr stuff
@@ -143,6 +184,83 @@ R = 1;
 [K,S] = lqr(A,B,Q,R);
 K
 dampingRatio = K(2)/(sqrt(K(1))*2)
+
+%%
+
+tspan = xtraj_opt.tspan;
+t_f = tspan(2);
+eps = 0.01;
+xstar = xtraj_opt.eval(t_f);
+dx = [0.005;0;0;0];
+
+xm = xstar + dx;
+
+
+T = cgLQR.getResetMapJacobian(xstar);
+
+
+xPlus = plant.collisionDynamics(0,0,xstar,0);
+xPlusTraj = xtraj_opt.eval(0);
+
+xPlusActual = plant.collisionDynamics(0,0,xm,0)
+xPlusEst = xPlus + T*dx
+
+diff = xPlusActual - xPlusEst
+
+
+%%
+
+disp('-------------')
+t = 1.2;
+timeIdxTraj = foh(tArray, 1:length(tArray));
+idx = floor(ppval(timeIdxTraj, t));
+t = tArray(idx);
+
+tp = trueParticleArray{idx};
+ekfParticle = kalmanFilterParticleArray{idx};
+
+disp('------');
+[uGlobal, data] = cgLQR.getControlInputFromGlobalState(tp.hybridMode_, tp.x_)
+
+uArray(idx)
+
+[uGlobal_ekf, data_ekf] = cgLQR.getControlInputFromGlobalState(ekfParticle.hybridMode_, ekfParticle.x_)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

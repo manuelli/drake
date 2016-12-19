@@ -71,15 +71,23 @@ function plotControlData(inputData)
   subplot(numPlots,1,1)
   hold on;
   plot(t_grid, uActual_grid, 'g', 'DisplayName', 'u actual');
-  plot(t_grid, u_mode_1, 'r', 'DisplayName', 'u mode 1 ');
-  plot(t_grid, u_mode_1_robust, '--r', 'DisplayName', 'u mode 1 robust');
 
-  plot(t_grid, u_mode_2, 'b', 'DisplayName', 'u mode 2 ');
-  plot(t_grid, u_mode_2_robust, '--b', 'DisplayName', 'u mode 2 ');
+  idx = abs(u_mode_1) > 0;
+  plot(t_grid(idx), u_mode_1(idx), 'r', 'DisplayName', 'u mode 1 ');
 
-  plot(t_grid, u_robust, 'm', 'DisplayName', 'u robust ');
-  plot(t_grid, u_robust_blend, '--m', 'DisplayName', 'u robust blend');
-  plot(t_grid, u_blend, 'c', 'DisplayName', 'u blend ');
+  idx = abs(u_mode_1_robust) > 0
+  plot(t_grid(idx), u_mode_1_robust(idx), '--r', 'DisplayName', 'u mode 1 robust');
+
+  idx = abs(u_mode_2) > 0;
+  plot(t_grid(idx), u_mode_2(idx), 'b', 'DisplayName', 'u mode 2 ');
+
+  idx = abs(u_mode_2_robust) > 0;
+  plot(t_grid(idx), u_mode_2_robust(idx), '--b', 'DisplayName', 'u mode 2 ');
+
+  idx = abs(u_robust) > 0;
+  plot(t_grid(idx), u_robust(idx), 'm', 'DisplayName', 'u robust ');
+  % plot(t_grid, u_robust_blend, '--m', 'DisplayName', 'u robust blend');
+  % plot(t_grid, u_blend, 'c', 'DisplayName', 'u blend ');
   legend('show');
   ylabel('control input')
   xlabel('time')
