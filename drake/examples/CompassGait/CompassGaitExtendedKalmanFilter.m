@@ -80,8 +80,8 @@ classdef CompassGaitExtendedKalmanFilter < handle
 
 
     % is hybrid mode, the current estimate in the EKF?
-    function applyMeasurementUpdate(obj, hybridMode, y_obs_global)
-      y = obj.cgUtils_.transformObservationGlobalToLocal(hybridMode, y_obs_global);
+    function applyMeasurementUpdate(obj, y_obs_global)
+      y = obj.cgUtils_.transformObservationGlobalToLocal(obj.hybridMode_, y_obs_global);
       y = reshape(y,[2,1]);
       yhat = obj.H_*obj.xBar_;
 
@@ -89,6 +89,8 @@ classdef CompassGaitExtendedKalmanFilter < handle
       obj.sigma_ = (eye(4) - obj.kalmanGain_*obj.H_)*obj.sigmaBar_;
     end
 
+
+    %WARNING: don't think that this is correct, should be 1/dt
     function yhat = generateObservation(obj, x)
       mu = [x(1), x(2)];
       yhat = mvnrnd(mu, obj.measurementNoiseCovarianceMatrix_/sqrt(dt));
