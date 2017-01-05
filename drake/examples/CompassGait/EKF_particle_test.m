@@ -41,7 +41,7 @@ options = struct();
 options.Kp = 50;
 options.dampingRatio = 1.0;
 options.useLQR = false;
-options.usePlanStanceLegVelocity = true;
+options.usePlanStanceLegVelocity = false;
 hzdController = HZDController(p, options);
 hzdController = hzdController.setNominalTrajectory(xtraj_opt, utraj_opt);
 hzdController.plotPhaseTrajectories();
@@ -81,6 +81,13 @@ legend('show');
 hold off;
 
 
+%% PD Controller
+
+% this is just another PD controller
+pdControllerOptions = struct();
+pdControllerOptions.Kp = 50;
+pdController = CompassGaitPDController(p, xtraj_opt, utraj_opt, pdControllerOptions);
+
 
 %% Set simulation parameters
 plant = TimeSteppingCompassGaitPlant(p.gamma);
@@ -90,12 +97,12 @@ t = t_start;
 dt = 0.0025;
 x_local_orig = xtraj_opt.eval(t);
 
-delta_x = [0;0;-0.1;0];
+delta_x = [0;0;-0.0;0];
 x_local = x_local_orig + delta_x;
 
 
 hybridMode = 1;
-t_f = 20;
+t_f = 5;
 
 numTimesteps = ceil((t_f-t)/dt);
 t_f = t + numTimesteps*dt;
@@ -111,17 +118,18 @@ t_current = t;
 runOptions = struct();
 runOptions.useParticleFilter = false;
 runOptions.useEKF = true;
+runOptions.useObserver = true;
 
 options = struct();
 options.initializationPositionNoiseStdDev = 0.01;
 options.initializationVelocityNoiseStdDev = 0.01;
 
-options.processNoiseStdDev_q = 0.02;
-options.processNoiseStdDev_v = 0.02;
+options.processNoiseStdDev_q = 0.001;
+options.processNoiseStdDev_v = 0.001;
 
 
-options.measurementNoiseIMUVar = dt*1e-4;
-options.measurementNoiseEncodersVar = dt*1e-4;
+options.measurementNoiseIMUVar = dt*0.01;
+options.measurementNoiseEncodersVar = dt*0.01;
 options.numParticles = 100;
 
 truthParticleOptions = struct();
@@ -133,7 +141,8 @@ controllerOptions = struct();
 % options are
 % - hzd
 % - lqr
-controllerOptions.controlStrategy = 'hzd';
+% - pd
+controllerOptions.controlStrategy = 'pd';
 
 % options include
 % - normal
@@ -162,17 +171,21 @@ ekfOptions = struct();
 % - 'natural'
 ekfOptions.resetType = 'true';
 
+%% Setup Luenberger Observer
+cgObserver = CompassGaitObserver(plant);
+cgObserver.initialize(hybridMode, xGlobal);
 
+%% Setup Particle Filter
 
 particleFilter = CompassGaitParticleFilter(plant, options);
 particleFilter.nominalTraj_ = xtraj_single_step;
 
-
+%% Setup EKF
 ekf = CompassGaitExtendedKalmanFilter(plant, options);
 
 % determines whether or not we add noise to the measurements
 observationOptions = struct();
-observationOptions.addNoise = false;
+observationOptions.addNoise = true;
 observationOptions.bias = [0;0]; % a bias to add to the measurements, see how this affects performance
 
 
@@ -197,6 +210,7 @@ particleSetArray = {};
 particleSetArrayAfterImportanceResampling = {};
 observationArray = {};
 kalmanFilterParticleArray = {};
+observerParticleArray = {};
 kalmanFilterParticleBarArray = {};
 tArray = [];
 plan_time_array = [];
@@ -204,6 +218,7 @@ stanceAngleAfterReset = [];
 planTimeAfterImpactArray = [];
 uArray = [];
 xLocalArray = [];
+controlDataArray = {};
 
 hybridEventTimes = [];
 ekfResetTimes = [];
@@ -236,8 +251,11 @@ for i=1:numTimesteps
   if ~simulatorInitialized
     uGlobal = 0;
     simulatorInitialized = true;
+    controlData = {};
   else
 
+    % determine the state off which we will control. Can be the true state
+    % or also can be an estimated state, like and ekf or particle filter
     if strcmp(controllerOptions.controlState, 'true')
       controlStateParticle = trueParticle;
       if (isempty(hybridEventTimes))
@@ -260,8 +278,9 @@ for i=1:numTimesteps
       controlStateParticle = trueParticle;
     end
 
+    % Specity which type of controller to use, could be lqr, hzd, pd etc
     if strcmp(controllerOptions.controlStrategy, 'hzd')
-      [uGlobal, controlReturnData] = hzdController.getControlInputFromGlobalState(t_current, controlStateParticle.hybridMode_, controlStateParticle.x_, controllerOptions);
+      [uGlobal, controlData] = hzdController.getControlInputFromGlobalState(t_current, controlStateParticle.hybridMode_, controlStateParticle.x_, controllerOptions);
     elseif strcmp(controllerOptions.controlStrategy, 'lqr')
 
       if (isempty(hybridEventTimes))
@@ -270,9 +289,11 @@ for i=1:numTimesteps
         t_plan = t_current - hybridEventTimes(end);
       end
 
-      [uGlobal, controlReturnData] = cgLQR.getControlInputFromGlobalState(t_plan, controlStateParticle.hybridMode_, controlStateParticle.x_);
+      [uGlobal, controlData] = cgLQR.getControlInputFromGlobalState(t_plan, controlStateParticle.hybridMode_, controlStateParticle.x_);
+    elseif strcmp(controllerOptions.controlStrategy, 'pd')
+      [uGlobal, controlData] = pdController.getControlInputFromGlobalState(controlStateParticle.hybridMode_, controlStateParticle.x_);      
     else
-      error('controller type must be one of lqr or hzd');
+      error('controller type must be one of lqr, pd or hzd');
     end
 
 
@@ -287,12 +308,17 @@ for i=1:numTimesteps
   end
  
   uArray(end+1) = uGlobal;
+  controlDataArray{end+1} = controlData;
 
   % now record all the estimation stuff that went along with this control
   trueParticleArray{end+1} = CompassGaitParticle.copy(trueParticle);
 
   if runOptions.useEKF
     kalmanFilterParticleArray{end+1} = ekf.getKalmanFilterStateAsParticle();
+  end
+
+  if runOptions.useObserver
+    observerParticleArray{end+1} = cgObserver.getObserverStateAsParticle();
   end
 
   if runOptions.useParticleFilter
@@ -339,6 +365,11 @@ for i=1:numTimesteps
     ekf.applyMeasurementUpdate(y); % note y is in global coords
     % kalmanFilterParticleArray{end+1} = ekf.getKalmanFilterStateAsParticle();
     kalmanFilterParticleBarArray{end+1} = ekf.getKalmanFilterBarStateAsParticle();
+  end
+
+  if runOptions.useObserver
+    cgObserver.applyMotionModel(uGlobal, dt);
+    cgObserver.applyMeasurementUpdate(y, dt);
   end
 
 
@@ -413,8 +444,12 @@ for i=1:numTimesteps
     resetEKF = false;
   end
 
-  t_current = t_current + dt;
+  if runOptions.useObserver && resetEKF
+    cgObserver.applyResetMap();
+  end
+
   tArray(end+1) = t_current;
+  t_current = t_current + dt;
   plan_time_array(end+1) = t_plan;
   xLocalArray(:,end+1) = cgUtils.transformGlobalStateToLocalState(trueParticle.hybridMode_, trueParticle.x_);
 end
@@ -424,6 +459,7 @@ toc;
 %% Make Trajetory of true particle
 
 simTraj = PPTrajectory(pchip(tArray, xLocalArray));
+idxTraj = PPTrajectory(zoh(tArray, 1:length(tArray)));
 
 % visualize the trajectory
 v = CompassGaitVisualizer(plant, simTraj.getOutputFrame);
@@ -450,7 +486,11 @@ end
 
 if runOptions.useParticleFilter
 %   plotData.particleSetArray = particleSetArray;
-  plotData.particleSetArray = particleSetArray;
+  plotData.particleSetArray = particleSetAsrray;
+end
+
+if runOptions.useObserver
+  plotData.observerParticleArray = observerParticleArray;
 end
 
 plotParticles(plotData, fig)
@@ -475,6 +515,12 @@ plotData.plan_time_array = plan_time_array;
 trajPlotOptions = struct();
 trajPlotOptions.plotEKF = true;
 trajPlotOptions.plotLQR = false;
+
+
+if runOptions.useObserver
+  trajPlotOptions.plotObserver = true;
+end
+
 trajPlot = PlotParticleTrajectory(plotData,trajPlotOptions);
 % trajPlot.plotDataArray(trajPlot.plotArray_)
 

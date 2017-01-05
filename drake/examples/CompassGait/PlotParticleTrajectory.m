@@ -11,6 +11,7 @@ classdef PlotParticleTrajectory < handle
     plotArrayTemplate_;
     plotArrayEKF_;
     plotArray_;
+    plotArrayObserver_;
     figCounter_;
     plotHandles_;
     cgUtils_;
@@ -54,6 +55,7 @@ classdef PlotParticleTrajectory < handle
       obj.plotArrayTemplate_ = plotArray;
       obj.plotArray_ = plotArray;
       obj.plotArrayEKF_ = obj.plotArrayTemplate_;
+      obj.plotArrayObserver_ = obj.plotArrayTemplate_;
 
 
 
@@ -83,6 +85,10 @@ classdef PlotParticleTrajectory < handle
         if obj.options_.plotEKF
           ekfParticle = obj.inputData.kalmanFilterParticleArray{i};
           obj.plotArrayEKF_ = obj.populatePlotArray(ekfParticle, obj.plotArrayEKF_, uGlobal, i);
+        end
+
+        if obj.options_.plotObserver
+          obj.plotArrayObserver_ = 
         end
       end
 
