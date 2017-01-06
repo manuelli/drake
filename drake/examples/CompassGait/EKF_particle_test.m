@@ -156,7 +156,8 @@ controllerOptions.type = 'normal'; % just standard controller
 % options include
 % - true
 % - ekf
-controllerOptions.controlState = 'true'; 
+% - observer
+controllerOptions.controlState = 'ekf'; 
 % controllerOptions.usePlanStanceLegVelocity = true;
 
 controllerOptions.useHackyStuff = false;
@@ -302,7 +303,10 @@ for i=1:numTimesteps
     else
       t_plan = t_current - ekfResetTimes(end);
     end
+  elseif strcmp(controllerOptions.controlState, 'observer')
+    controlStateParticle = cgObserver.getObserverStateAsParticle();
   end
+    
 
   % Specify which type of controller to use.
   % options
