@@ -97,7 +97,7 @@ t = t_start;
 dt = 0.0025;
 x_local_orig = xtraj_opt.eval(t);
 
-delta_x = [0;0;-0.0;0];
+delta_x = [0;0;-0.1;0];
 x_local = x_local_orig + delta_x;
 
 
@@ -120,6 +120,8 @@ runOptions.useParticleFilter = false;
 runOptions.useEKF = true;
 runOptions.useObserver = true;
 
+
+% these options apply to the EKF and also to the Particle Filter
 options = struct();
 options.initializationPositionNoiseStdDev = 0.01;
 options.initializationVelocityNoiseStdDev = 0.01;
@@ -128,8 +130,8 @@ options.processNoiseStdDev_q = 0.001;
 options.processNoiseStdDev_v = 0.001;
 
 
-options.measurementNoiseIMUVar = dt*0.01;
-options.measurementNoiseEncodersVar = dt*0.01;
+options.measurementNoiseIMUVar = dt*0.00;
+options.measurementNoiseEncodersVar = dt*0.0001;
 options.numParticles = 100;
 
 truthParticleOptions = struct();
@@ -154,7 +156,7 @@ controllerOptions.type = 'normal'; % just standard controller
 % options include
 % - true
 % - ekf
-controllerOptions.controlState = 'ekf'; 
+controllerOptions.controlState = 'true'; 
 % controllerOptions.usePlanStanceLegVelocity = true;
 
 controllerOptions.useHackyStuff = false;
@@ -172,7 +174,9 @@ ekfOptions = struct();
 ekfOptions.resetType = 'true';
 
 %% Setup Luenberger Observer
-cgObserver = CompassGaitObserver(plant);
+cgObserverOptions = struct();
+cgObserverOptions.epsilon = 0.2;
+cgObserver = CompassGaitObserver(plant, cgObserverOptions);
 cgObserver.initialize(hybridMode, xGlobal);
 
 %% Setup Particle Filter
@@ -246,90 +250,100 @@ for i=1:numTimesteps
 
   hybridEvent = false; % helper var
 
-  % just command 0 if this is the first time through the loop.
-  % otherwise can do uncertainty aware control input and stuff
-  if ~simulatorInitialized
-    uGlobal = 0;
-    simulatorInitialized = true;
-    controlData = {};
-  else
+  % store the current particle
+  tArray(end+1) = t_current;
+  trueParticleArray{end+1} = CompassGaitParticle.copy(trueParticle);
+  xLocalArray(:,end+1) = cgUtils.transformGlobalStateToLocalState(trueParticle.hybridMode_, trueParticle.x_);
 
-    % determine the state off which we will control. Can be the true state
-    % or also can be an estimated state, like and ekf or particle filter
-    if strcmp(controllerOptions.controlState, 'true')
-      controlStateParticle = trueParticle;
-      if (isempty(hybridEventTimes))
-        t_plan = t_current;
-      else
-        t_plan = (t_current - hybridEventTimes(end))+planTimeAfterImpactArray(end);
-      end
-    elseif strcmp(controllerOptions.controlState, 'ekf')
-      controlStateParticle = ekf.getKalmanFilterStateAsParticle();
-      if (isempty(ekfResetTimes))
-        t_plan = t_current;
-      else
-        t_plan = t_current - ekfResetTimes(end);
-      end
+  % generate an observation
+  [y, yParticle] = particleFilter.generateObservation(trueParticle, dt, observationOptions);
+
+  % record the observations that we had
+  observationArray{end+1} = yParticle; 
+
+
+  %% Apply measurement update to all the estimators
+  if runOptions.useEKF
+    % for now we will tell the EKF the correct hybrid mode
+    ekf.applyMeasurementUpdate(y); % note y is in global coords
+    kalmanFilterParticleArray{end+1} = ekf.getKalmanFilterStateAsParticle();
+  end
+
+  if runOptions.useObserver
+    cgObserver.applyMeasurementUpdate(y, dt);
+    observerParticleArray{end+1} = cgObserver.getObserverStateAsParticle();
+  end
+
+  if runOptions.useParticleFilter
+    if particleFilterActive
+      % apply the measurement update
+      particleFilter.applyMeasurementUpdate(y,dt);
+      particleFilter.applyImportanceResampling();
+      particleSetArray{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
+    else
+      particleSetArray{end+1} = {};
     end
+  end
 
-    xLocal = cgUtils.transformGlobalStateToLocalState(trueParticle.hybridMode_, trueParticle.x_);
-    thetaTrue = xLocal(2);
-    if (controllerOptions.useHackyStuff && (thetaTrue > controllerOptions.hackThetaLowerBound) && (controllerOptions.hackThetaUpperBound))
-      controlStateParticle = trueParticle;
+  %% Compute Control Input
+  % determine the state off which we will control. Can be the true state
+  % or also can be an estimated state, like and ekf or particle filter
+  if strcmp(controllerOptions.controlState, 'true')
+    controlStateParticle = trueParticle;
+    if (isempty(hybridEventTimes))
+      t_plan = t_current;
+    else
+      t_plan = (t_current - hybridEventTimes(end))+planTimeAfterImpactArray(end);
     end
+  elseif strcmp(controllerOptions.controlState, 'ekf')
+    controlStateParticle = ekf.getKalmanFilterStateAsParticle();
+    if (isempty(ekfResetTimes))
+      t_plan = t_current;
+    else
+      t_plan = t_current - ekfResetTimes(end);
+    end
+  end
 
-    % Specity which type of controller to use, could be lqr, hzd, pd etc
-    if strcmp(controllerOptions.controlStrategy, 'hzd')
+  % Specify which type of controller to use.
+  % options
+  % - hzd
+  % - lqr
+  % - pd
+  switch controllerOptions.controlStrategy
+    case 'hzd'
       [uGlobal, controlData] = hzdController.getControlInputFromGlobalState(t_current, controlStateParticle.hybridMode_, controlStateParticle.x_, controllerOptions);
-    elseif strcmp(controllerOptions.controlStrategy, 'lqr')
+    case 'lqr'
 
       if (isempty(hybridEventTimes))
         t_plan = t_current;
       else
         t_plan = t_current - hybridEventTimes(end);
       end
-
       [uGlobal, controlData] = cgLQR.getControlInputFromGlobalState(t_plan, controlStateParticle.hybridMode_, controlStateParticle.x_);
-    elseif strcmp(controllerOptions.controlStrategy, 'pd')
+    case 'pd'
       [uGlobal, controlData] = pdController.getControlInputFromGlobalState(controlStateParticle.hybridMode_, controlStateParticle.x_);      
-    else
+    otherwise
       error('controller type must be one of lqr, pd or hzd');
-    end
+  end
 
-
-    if (particleFilterActive)
-      switch controllerOptions.type
-        case 'deadzone'
-          uGlobal = 0;
-        case 'robust'
-          uGlobal = hzdController.computeRobustControlFromParticleSet(particleFilter.particleSet_, dt);
-      end
+  % Whether to apply the deadzone or robust controller things
+  % if you have controllerOptions.type set to 'normal' it will be do nothing
+  if (particleFilterActive)
+    switch controllerOptions.type
+      case 'deadzone'
+        uGlobal = 0;
+      case 'robust'
+        uGlobal = hzdController.computeRobustControlFromParticleSet(particleFilter.particleSet_, dt);
     end
   end
- 
+  % control input has been decided at this point.
+  % record it
   uArray(end+1) = uGlobal;
-  controlDataArray{end+1} = controlData;
 
-  % now record all the estimation stuff that went along with this control
-  trueParticleArray{end+1} = CompassGaitParticle.copy(trueParticle);
+  %% Apply motion model to true particle and estimators
 
-  if runOptions.useEKF
-    kalmanFilterParticleArray{end+1} = ekf.getKalmanFilterStateAsParticle();
-  end
-
-  if runOptions.useObserver
-    observerParticleArray{end+1} = cgObserver.getObserverStateAsParticle();
-  end
-
-  if runOptions.useParticleFilter
-    if particleFilterActive
-      particleSetArray{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
-    else
-      particleSetArray{end+1} = {};
-    end
-  end
-  
   % move the true particle forwards using the motion model
+  % record the hybrid event if one ocurred
   outputData = particleFilter.applyMotionModelSingleParticle(trueParticle,uGlobal,dt,struct('useUncertainty',false));
   
   % record any hybrid events that may have occurred
@@ -342,37 +356,16 @@ for i=1:numTimesteps
      stanceAngleAfterReset = xLocal(2);
      planTimeAfterImpactArray(end+1) = cgLQR.ttrajPhase.eval(stanceAngleAfterReset);
   end
-  
-  % move the particles in the filter using the stochastic motion model
-%   particleFilter.applyMotionModel(0,dt);
 
-
+  % record the resetting stuff for the EKF is using the 'true' EKF reset type
   % if needed, apply the reset map to the ekf
   if (hybridEvent && strcmp(ekfOptions.resetType, 'true'))
     resetEKF = true;
-    % ekf.applyResetMap();
-  end
-  
-  % generate and observation
-  [y, yParticle] = particleFilter.generateObservation(trueParticle, dt, observationOptions);
-
-  observationArray{end+1} = yParticle; % record the observations that we had
-
-  if runOptions.useEKF
-    % for now we will tell the EKF the correct hybrid mode
-    % apply the motion model
-    ekf.applyMotionModel(uGlobal, dt);
-    ekf.applyMeasurementUpdate(y); % note y is in global coords
-    % kalmanFilterParticleArray{end+1} = ekf.getKalmanFilterStateAsParticle();
-    kalmanFilterParticleBarArray{end+1} = ekf.getKalmanFilterBarStateAsParticle();
-  end
-
-  if runOptions.useObserver
-    cgObserver.applyMotionModel(uGlobal, dt);
-    cgObserver.applyMeasurementUpdate(y, dt);
   end
 
 
+  % decide whether or not to activate PF
+  % depends on whether we will hit the hybrid guard
   if runOptions.useParticleFilter
     
     if (~particleFilterActive)
@@ -396,62 +389,60 @@ for i=1:numTimesteps
         end
       end
     end
-    
-    if (particleFilterActive)    
-      % apply motion model
-      particleFilter.applyMotionModel(0,dt);
+  end
 
-      % store the particle set
-      % particleSetArray{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
-
-      % HACK: add truth particles if necessary
-  %     particleFilter.addTruthParticles(trueParticle, truthParticleOptions);
-
-      % apply the measurement update
-      particleFilter.applyMeasurementUpdate(y,dt);
-      particleFilter.applyImportanceResampling();
-
-    % store the particle set after importance resampling
-      % particleSetArrayAfterImportanceResampling{end+1} = CompassGaitParticle.copyParticleSet(particleFilter.particleSet_);
-    end
-
-    
-    
-    % deactivate PF when all in the next mode
-    if (particleFilterActive && (trueParticle.hybridMode_ ~= pfActivationMode))
-      if ((particleFilter.particleSet_{1}.hybridMode_ ~= pfActivationMode) && CompassGaitParticle.allParticlesInSameMode(particleFilter.particleSet_))
-        disp('deactivating PF');
+  % decide whether we should de-activate particle filter
+  if (runOptions.useParticleFilter && particleFilterActive)
+    % all particles must be in the same mode, and that mode must be different than the 
+    % mode in which the PF was initialized
+    if CompassGaitParticle.allParticlesInSameMode(particleFilter.particleSet_)
+      currentMode = particleFilter.particleSet_{1}.hybridMode_;
+      if currentMode ~= pfActivationMode
         particleFilterActive = false;
+        disp('de-activating particle filter')
 
+        % trigger the 'late' EKF reset
         if strcmp(ekfOptions.resetType, 'late')
           resetEKF = true;
         end
       end
-%       kfParticle  = kalmanFilterParticleArray{end};
-%       xLocal = cgUtils.transformGlobalStateToLocalState(kfParticle.hybridMode_, kfParticle.x_);
-%       stanceAngle = xLocal(2);
-%       if (stanceAngle > 0.155)
-%         particleFilterActive = false;
-%         disp('deactivating PF');
-%       end
     end
   end
 
-  if resetEKF
-    disp('resetting EKF');
-    ekf.applyResetMap();
-    ekfResetTimes(end+1) = t_current;
-    resetEKF = false;
+
+  % for now reset observer whenever we reset the EKF
+  resetObserver = resetEKF;
+
+  % apply motion model to the estimators
+  if runOptions.useEKF
+    ekf.applyMotionModel(uGlobal, dt);
+
+    % reset the EKF if necessary
+    if resetEKF
+      ekf.applyResetMap()
+      resetEKF = false;
+    end
   end
 
-  if runOptions.useObserver && resetEKF
-    cgObserver.applyResetMap();
+  if runOptions.useObserver
+    cgObserver.applyMotionModel(uGlobal, dt);
+
+    % reset the EKF if necessary
+    if resetObserver
+      cgObserver.applyResetMap();
+      resetObserver = false;
+    end
   end
 
-  tArray(end+1) = t_current;
+  if particleFilterActive
+    % also have ability to pass in options struct
+    particleFilter.applyMotionModel(uGlobal, dt);
+  end  
+
+  
   t_current = t_current + dt;
   plan_time_array(end+1) = t_plan;
-  xLocalArray(:,end+1) = cgUtils.transformGlobalStateToLocalState(trueParticle.hybridMode_, trueParticle.x_);
+  
 end
 % profile viewer
 toc;
@@ -475,6 +466,7 @@ plotData = struct();
 plotData.ekf = ekf;
 plotData.particleFilter = particleFilter;
 plotData.hzdController = hzdController;
+plotData.pdController = pdController;
 plotData.trueParticleArray = trueParticleArray;
 plotData.observationArray = observationArray;
 plotData.times = tArray;
@@ -486,12 +478,16 @@ end
 
 if runOptions.useParticleFilter
 %   plotData.particleSetArray = particleSetArray;
-  plotData.particleSetArray = particleSetAsrray;
+  plotData.particleSetArray = particleSetArray;
 end
 
 if runOptions.useObserver
   plotData.observerParticleArray = observerParticleArray;
 end
+
+% if runOptions.useObserver
+%   plotData.observerParticleArray = observerParticleArray;
+% end
 
 plotParticles(plotData, fig)
 
@@ -515,6 +511,7 @@ plotData.plan_time_array = plan_time_array;
 trajPlotOptions = struct();
 trajPlotOptions.plotEKF = true;
 trajPlotOptions.plotLQR = false;
+trajPlotOptions.controlTypeToPlot = 'pd';
 
 
 if runOptions.useObserver

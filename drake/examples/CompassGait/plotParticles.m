@@ -70,6 +70,12 @@ set(fig,'Visible', 'on')
       inputData.ekf.plotKalmanFilterState(inputData.kalmanFilterParticleArray{idx});
     end
 
+    if (isfield(inputData, 'observerParticleArray'))
+      observerEstOptions = struct();
+      observerEstOptions.colorString = 'k';
+      particleFilter.plotSingleParticle(inputData.observerParticleArray{idx}, observerEstOptions)
+    end
+
     titleString = strcat('Left leg, t = ', num2str(t));
     title(titleString);
     hold off;
@@ -98,6 +104,12 @@ set(fig,'Visible', 'on')
 
     if (isfield(inputData, 'kalmanFilterParticleArray'))
       inputData.ekf.plotKalmanFilterState(inputData.kalmanFilterParticleArray{idx}, options);
+    end
+
+    if (isfield(inputData, 'observerParticleArray'))
+      observerEstOptions = options;
+      observerEstOptions.colorString = 'k';
+      particleFilter.plotSingleParticle(inputData.observerParticleArray{idx}, observerEstOptions)
     end
 
     titleString = strcat('Right Leg t = ', num2str(t));
@@ -129,6 +141,9 @@ set(fig,'Visible', 'on')
       inputData.ekf.plotKalmanFilterState(yParticle,obsOptions);
       % scatter(y(1),y(2),'filled','MarkerEdgeColor',[1 0.5  0]);
     end
+
+
+
     xlabel('qL');
     ylabel('qR');
     title('observation plot in position space');

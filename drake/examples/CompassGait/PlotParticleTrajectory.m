@@ -52,6 +52,9 @@ classdef PlotParticleTrajectory < handle
       plotArray.uLQR_plan = [];
       plotArray.V_lqr = []; % the lqr value function
 
+      % PD controller stuff
+      plotArray.u_pd = [];
+
       obj.plotArrayTemplate_ = plotArray;
       obj.plotArray_ = plotArray;
       obj.plotArrayEKF_ = obj.plotArrayTemplate_;
@@ -68,7 +71,8 @@ classdef PlotParticleTrajectory < handle
     function obj = initializeOptions(obj, options)
       defaultOptions = struct();
       defaultOptions.plotEKF = true;
-      defaultOptions.useLQR = false;
+      defaultOptions.plotLQR = false;
+      defaultOptions.controlTypeToPlot = 'hzd';
 
       obj.options_ = applyDefaults(options, defaultOptions);
     end
@@ -88,7 +92,8 @@ classdef PlotParticleTrajectory < handle
         end
 
         if obj.options_.plotObserver
-          obj.plotArrayObserver_ = 
+          observerParticle = obj.inputData.observerParticleArray{i};
+          obj.plotArrayObserver_ = obj.populatePlotArray(observerParticle, obj.plotArrayObserver_, uGlobal, i);
         end
       end
 
@@ -124,6 +129,12 @@ classdef PlotParticleTrajectory < handle
         plotOptions = struct();
         plotOptions.lineStyle = '--';
         obj.plotDataArray(obj.plotArrayEKF_, plotOptions);
+      end
+
+      if options.plotObserver
+        plotOptions = struct();
+        plotOptions.lineStyle = ':';
+        obj.plotDataArray(obj.plotArrayObserver_, plotOptions);
       end
 
       obj.plotActualControl()
@@ -183,6 +194,8 @@ classdef PlotParticleTrajectory < handle
       uNominalLocal = obj.inputData.hzdController.uPhaseTraj.eval(lyapData.phaseVar);
       plotArray.uNominal(end+1) = obj.cgUtils_.transformLocalControlToGlobalControl(p.hybridMode_, uNominalLocal);
       [plotArray.u(end+1), controlData] = obj.inputData.hzdController.getControlInputFromGlobalState(0, p.hybridMode_, p.x_);
+
+      plotArray.u_pd(end+1) = obj.inputData.pdController.getControlInputFromGlobalState(p.hybridMode_, p.x_);
 
       plotArray.A_y(end+1) = lyapData.A_y;
       plotArray.A_y_theta(end+1) = lyapData.A_y_theta;
@@ -333,7 +346,15 @@ classdef PlotParticleTrajectory < handle
       figure(obj.plotHandles_.control);
       % subplot(2,1,1);
       hold on;
-      plot(tGrid, plotArray.u, strcat(options.lineStyle,'b'), 'DisplayName', 'u');
+      switch obj.options_.controlTypeToPlot
+        case 'hzd'
+          plot(tGrid, plotArray.u, strcat(options.lineStyle,'b'), 'DisplayName', 'u hzd');
+        case 'pd'
+          plot(tGrid, plotArray.u_pd, strcat(options.lineStyle,'b'), 'DisplayName', 'u pd');
+        otherwise
+          error('supported control types are pd and hzd'); 
+      end
+          
       plot(tGrid, plotArray.uNominal, strcat(options.lineStyle,'g'), 'DisplayName', 'u plan');
 
       if obj.options_.plotLQR

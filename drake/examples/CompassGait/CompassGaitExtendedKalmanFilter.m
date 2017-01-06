@@ -54,6 +54,14 @@ classdef CompassGaitExtendedKalmanFilter < handle
 
       obj.measurementNoiseCovarianceMatrixUnscaled_ = ones(2,2)*obj.options_.measurementNoiseIMUVar + eye(2)*obj.options_.measurementNoiseEncodersVar;
 
+      % initialize the bar variables so we can immediately apply a measurement update
+      obj.xBar_ = obj.xLocal_;
+      obj.sigmaBar_ = obj.sigma_;
+
+      % just initialize kalman gain to zero
+      % effectively means we will ignore the first measurement
+      obj.kalmanGain_ = zeros(4,2);
+
     end
 
     function applyMotionModel(obj, uGlobal, dt)
@@ -110,6 +118,11 @@ classdef CompassGaitExtendedKalmanFilter < handle
       obj.sigma_ = sigmaPlus;
       obj.xLocal_ = xp;
       obj.hybridMode_ = nextMode;
+
+      % also make sure you set xBar to this also.
+      % otherwise when we apply the measurement update everything will be messed up
+      obj.sigmaBar_ = obj.sigma_;
+      obj.xBar_ = obj.xLocal_;
     end
 
 
