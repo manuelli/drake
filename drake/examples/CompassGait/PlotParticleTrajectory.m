@@ -114,8 +114,8 @@ classdef PlotParticleTrajectory < handle
       end
 
       defaultOptions = struct();
-      defaultOptions.plotTrue = 'true';
-      defaultOptions.plotEKF = 'false';
+      defaultOptions.plotTrue =  true;
+      defaultOptions.plotEKF = false;
       options = applyDefaults(options, defaultOptions);
 
       obj = obj.createPlotHandles();

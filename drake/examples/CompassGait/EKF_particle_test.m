@@ -32,6 +32,9 @@ xtraj_single_step_no_mode = xtraj_single_step(2:5);
 [p, utraj_opt, xtraj_opt] = SingleStepOptimization(xtraj_single_step_no_mode, options);
 
 
+gammaVals = [3];
+plotNominalTrajectory(xtraj_opt, gammaVals);
+
 %% Extract the nominal trajectory
 xtraj_single_step = xtraj_opt;
 
@@ -102,7 +105,7 @@ x_local = x_local_orig + delta_x;
 
 
 hybridMode = 1;
-t_f = 5;
+t_f = 2;
 
 numTimesteps = ceil((t_f-t)/dt);
 t_f = t + numTimesteps*dt;
@@ -126,12 +129,12 @@ options = struct();
 options.initializationPositionNoiseStdDev = 0.01;
 options.initializationVelocityNoiseStdDev = 0.01;
 
-options.processNoiseStdDev_q = 0.001;
-options.processNoiseStdDev_v = 0.001;
+options.processNoiseStdDev_q = 0.002;
+options.processNoiseStdDev_v = 0.002;
 
 
 options.measurementNoiseIMUVar = dt*0.00;
-options.measurementNoiseEncodersVar = dt*0.0001;
+options.measurementNoiseEncodersVar = dt*1e-4;
 options.numParticles = 100;
 
 truthParticleOptions = struct();
@@ -157,7 +160,7 @@ controllerOptions.type = 'normal'; % just standard controller
 % - true
 % - ekf
 % - observer
-controllerOptions.controlState = 'ekf'; 
+controllerOptions.controlState = 'true'; 
 % controllerOptions.usePlanStanceLegVelocity = true;
 
 controllerOptions.useHackyStuff = false;
@@ -173,6 +176,7 @@ ekfOptions = struct();
 % - 'late'
 % - 'natural'
 ekfOptions.resetType = 'true';
+ekfOptions.dt = dt;
 
 %% Setup Luenberger Observer
 cgObserverOptions = struct();
@@ -186,11 +190,15 @@ particleFilter = CompassGaitParticleFilter(plant, options);
 particleFilter.nominalTraj_ = xtraj_single_step;
 
 %% Setup EKF
+% standard one
 ekf = CompassGaitExtendedKalmanFilter(plant, options);
+
+% this ekf has a built in reset map, i.e. it uses the reset map of the plant
+ekf_normal_reset = CompassGaitExtendedKalmanFilter(plant, options);
 
 % determines whether or not we add noise to the measurements
 observationOptions = struct();
-observationOptions.addNoise = true;
+observationOptions.addNoise = false;
 observationOptions.bias = [0;0]; % a bias to add to the measurements, see how this affects performance
 
 
@@ -204,6 +212,8 @@ if runOptions.useParticleFilter
 end
 
 ekf.initializeFilter(hybridMode, xGlobal);
+ekf_normal_reset.initializeFilter(hybridMode, xGlobal);
+
 
 inputData = struct('xGlobal',xGlobal);
 inputData.hybridMode = hybridMode;
@@ -215,6 +225,7 @@ particleSetArray = {};
 particleSetArrayAfterImportanceResampling = {};
 observationArray = {};
 kalmanFilterParticleArray = {};
+kalmanFilterParticleArray_normal_reset = {};
 observerParticleArray = {};
 kalmanFilterParticleBarArray = {};
 tArray = [];
@@ -227,6 +238,8 @@ controlDataArray = {};
 
 hybridEventTimes = [];
 ekfResetTimes = [];
+
+ekfResetTimes_normal_reset = [];
 
 uGlobal = 0;
 simulatorInitialized = false;
@@ -268,6 +281,9 @@ for i=1:numTimesteps
     % for now we will tell the EKF the correct hybrid mode
     ekf.applyMeasurementUpdate(y); % note y is in global coords
     kalmanFilterParticleArray{end+1} = ekf.getKalmanFilterStateAsParticle();
+
+    ekf_normal_reset.applyMeasurementUpdate(y);
+    kalmanFilterParticleArray_normal_reset{end+1} = ekf_normal_reset.getKalmanFilterStateAsParticle();
   end
 
   if runOptions.useObserver
@@ -420,11 +436,17 @@ for i=1:numTimesteps
   % apply motion model to the estimators
   if runOptions.useEKF
     ekf.applyMotionModel(uGlobal, dt);
-
     % reset the EKF if necessary
     if resetEKF
       ekf.applyResetMap()
       resetEKF = false;
+      ekfResetTimes(end+1) = t_current;
+    end
+
+    % apply motion model to ekf_normal_reset and record the reset time if it occurred.
+    hybridSwitch = ekf_normal_reset.applyMotionModelWithHybridGuard(uGlobal, dt);
+    if hybridSwitch
+      ekfResetTimes_normal_reset(end+1) = t_current;
     end
   end
 
@@ -478,6 +500,7 @@ plotData.uArray = uArray;
 
 if runOptions.useEKF
   plotData.kalmanFilterParticleArray = kalmanFilterParticleArray;
+  plotData.kalmanFilterParticleArray = kalmanFilterParticleArray_normal_reset;
 end
 
 if runOptions.useParticleFilter
@@ -519,7 +542,7 @@ trajPlotOptions.controlTypeToPlot = 'pd';
 
 
 if runOptions.useObserver
-  trajPlotOptions.plotObserver = true;
+  trajPlotOptions.plotObserver = false;
 end
 
 trajPlot = PlotParticleTrajectory(plotData,trajPlotOptions);

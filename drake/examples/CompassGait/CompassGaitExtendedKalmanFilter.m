@@ -13,6 +13,7 @@ classdef CompassGaitExtendedKalmanFilter < handle
     kalmanGain_; % the kalman gain
     processNoiseCovarianceMatrixUnscaled_; % unscaled process noise covariance matrix, i.e. it's diagonal
     measurementNoiseCovarianceMatrixUnscaled_;
+    dt_;
   end
 
   methods
@@ -34,6 +35,8 @@ classdef CompassGaitExtendedKalmanFilter < handle
 
       defaultOptions.initializationPositionNoiseStdDev = 0.02;
       defaultOptions.initializationVelocityNoiseStdDev = 0.05;
+
+      defaultOptions.dt = 0.0025;
 
       obj.options_ = applyDefaults(options, defaultOptions);
     end
@@ -86,6 +89,41 @@ classdef CompassGaitExtendedKalmanFilter < handle
       obj.kalmanGain_ = obj.sigmaBar_*obj.H_'*inv(obj.H_*obj.sigmaBar_*obj.H_' + measurementNoiseCovarianceMatrix);
     end
 
+    % use the hybrid reset of the given plant rather than waiting for an external trigger
+    % for the reset
+    function hybridSwitch = applyMotionModelWithHybridGuard(obj, uGlobal, dt)
+      uLocal = obj.cgUtils_.transformGlobalControlToLocalControl(obj.hybridMode_, uGlobal);
+
+      % the 0 is because we don't care about the time when linearizing
+      [A,~] = obj.plant_.modes{1}.linearize(0,obj.xLocal_,uLocal);
+
+      G = A*dt + eye(4);
+
+      % now propagate dynamics forwards, ignoring hybrid guard
+      processNoiseGlobal = zeros(4,1); % just want pure forward sim
+      tspan = [0,dt];
+
+      [x_final, hybridSwitch, finalHybridMode, outputData] = obj.plant_.simulateThroughHybridEvent(obj.hybridMode_, obj.xLocal_, tspan, uGlobal, processNoiseGlobal);
+
+      % record the outcome of the simulation
+      obj.xBar_ = x_final;
+      obj.hybridMode_ = finalHybridMode;
+
+      processNoiseCovarianceMatrix = obj.getProcessNoiseCovarianceMatrix(dt);
+      measurementNoiseCovarianceMatrix = obj.getMeasurementNoiseCovarianceMatrix(dt);
+
+
+      obj.sigmaBar_ = G*obj.sigma_*G' + processNoiseCovarianceMatrix;
+
+      obj.kalmanGain_ = obj.sigmaBar_*obj.H_'*inv(obj.H_*obj.sigmaBar_*obj.H_' + measurementNoiseCovarianceMatrix);
+
+      if hybridSwitch
+        disp('hybrid guard hit during ekf motion model step, resetting');
+        obj.applyResetMapToCovarianceAndKalmanGain();
+      end
+
+    end
+
 
     % is hybrid mode, the current estimate in the EKF?
     function applyMeasurementUpdate(obj, y_obs_global)
@@ -123,6 +161,21 @@ classdef CompassGaitExtendedKalmanFilter < handle
       % otherwise when we apply the measurement update everything will be messed up
       obj.sigmaBar_ = obj.sigma_;
       obj.xBar_ = obj.xLocal_;
+
+      % we also need to update the kalmanGain
+      measurementNoiseCovarianceMatrix = obj.getMeasurementNoiseCovarianceMatrix(obj.options_.dt);
+      obj.kalmanGain_ = obj.sigmaBar_*obj.H_'*inv(obj.H_*obj.sigmaBar_*obj.H_' + measurementNoiseCovarianceMatrix);
+    end
+
+    function applyResetMapToCovarianceAndKalmanGain(obj)
+      resetMapJacobian = obj.plant_.getResetMapJacobian(obj.xLocal_);
+      sigmaPlus = resetMapJacobian*obj.sigma_*resetMapJacobian';
+      obj.sigmaBar_ = sigmaPlus;
+
+
+      % we also need to update the kalmanGain
+      measurementNoiseCovarianceMatrix = obj.getMeasurementNoiseCovarianceMatrix(obj.options_.dt);
+      obj.kalmanGain_ = obj.sigmaBar_*obj.H_'*inv(obj.H_*obj.sigmaBar_*obj.H_' + measurementNoiseCovarianceMatrix);
     end
 
 
