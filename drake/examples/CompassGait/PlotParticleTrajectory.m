@@ -133,7 +133,7 @@ classdef PlotParticleTrajectory < handle
 
       if options.plotObserver
         plotOptions = struct();
-        plotOptions.lineStyle = ':';
+        plotOptions.lineStyle = '--';
         obj.plotDataArray(obj.plotArrayObserver_, plotOptions);
       end
 

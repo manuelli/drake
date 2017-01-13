@@ -11,6 +11,7 @@ classdef CompassGaitParticle < handle
     optimizationWeight_; % weight for when we do robust control
     options_;
     dt_; % timestep of the simulation, needed for computing variance of measurement noise
+    gamma_ = -100; % only has meaning if greater than 0.
   end
 
   methods
@@ -34,6 +35,7 @@ classdef CompassGaitParticle < handle
       inputData.xGlobal = particle.x_;
       newParticle = CompassGaitParticle(inputData);
       newParticle.importanceWeight_ = particle.importanceWeight_;
+      newParticle.gamma_ = particle.gamma_;
     end
 
     function newParticleSet = copyParticleSet(particleSet)
@@ -107,6 +109,19 @@ classdef CompassGaitParticle < handle
 
       if(numel(returnData.mode2) > 0)
         returnData.mode2_avg = CompassGaitParticle.avgParticleSet(returnData.mode2);
+      end
+    end
+
+    function returnData = getAvgParticleInMostLikelyMode(particleSet)
+      returnData = CompassGaitParticle.getAvgParticleInEachMode(particleSet);
+
+      num_mode_1_particles = length(returnData.mode1);
+      num_mode_2_particles = length(returnData.mode2);
+
+      if num_mode_1_particles >= num_mode_2_particles
+        returnData.avgParticleInMostLikelyMode = returnData.mode1_avg;
+      else
+        returnData.avgParticleInMostLikelyMode = returnData.mode2_avg;
       end
     end
 

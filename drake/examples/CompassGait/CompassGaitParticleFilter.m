@@ -9,6 +9,8 @@ classdef CompassGaitParticleFilter < handle
     nominalTraj_;
     % measurementNoiseCovarianceMatrix_;
     measurementNoiseCovarianceMatrixUnscaled_;
+    observationMatrix_;
+    observerGain_;
   end
 
   methods
@@ -23,6 +25,7 @@ classdef CompassGaitParticleFilter < handle
       obj.cgUtils_ = CompassGaitUtils();
       obj.t_ = 0;
       obj.tPrev_ = 0;
+      obj.observationMatrix_ = [eye(2),zeros(2,2)];
     end
 
     function obj = initializeOptions(obj, options)
@@ -41,14 +44,19 @@ classdef CompassGaitParticleFilter < handle
       defaultOptions.truthParticlesStdDev_q = 0;
       defaultOptions.truthParticlesStdDev_v = 0;
 
+      defaultOptions.epsilonObserverGain = 0.05;
+
       obj.options_ = applyDefaults(options, defaultOptions);
 
       % note this is really covariance matrix
       obj.measurementNoiseCovarianceMatrixUnscaled_ = ones(2,2)*obj.options_.measurementNoiseIMUVar+ eye(2)*obj.options_.measurementNoiseEncodersVar;
+
+      epsilon = obj.options_.epsilonObserverGain;
+      obj.observerGain_ = [2.0/epsilon*eye(2); 1.0/epsilon^2*eye(2)];
     end
 
     % say where to start the particles
-    % xGlobal is just a vector here
+    % xGlobal is the qL, qR struct here
     function returnData = initializeFilter(obj, hybridMode, xGlobal, options)
       returnData = struct();
       returnData.hitHybridGuard = false;
@@ -92,6 +100,57 @@ classdef CompassGaitParticleFilter < handle
       end
       % note this is really covariance matrix
         obj.measurementNoiseCovarianceMatrixUnscaled_ = ones(2,2)*obj.options_.measurementNoiseIMUVar+ eye(2)*obj.options_.measurementNoiseEncodersVar;
+    end
+
+    function returnData = generateParticle(obj, seedParticle, sigmaGlobal)
+      % returnData should have fields
+      % - particle
+      % - hitHybridGuard
+
+      newParticle = CompassGaitParticle.copy(seedParticle);
+
+      hybridMode = seedParticle.hybridMode_;
+      xGlobal = seedParticle.x_;
+
+      xLocal = obj.cgUtils_.transformGlobalStateToLocalState(hybridMode, xGlobal);
+      sigmaLocal = obj.cgUtils_.transformGlobalToLocalCovarianceMatrix(hybridMode, sigmaGlobal);
+
+      xLocalNew = mvnrnd(xLocal, sigmaLocal);
+      xGlobalNew = obj.cgUtils_.transformLocalStateToGlobalState(hybridMode, xLocalNew);
+
+      newParticle.x_ = xGlobalNew;
+
+      returnData = struct();
+      returnData.particle = newParticle;
+      returnData.hitHybridGuard = (obj.plant_.footCollisionGuardGammaArg(xLocalNew, newParticle.gamma_) < 0);
+    end
+
+    function returnData = initializeFilterUncertainTerrainHeight(obj, seedParticle, sigmaGlobal,terrainHeightData)
+      % - terrainHeightData should have fields
+      % - gammaVals
+      % - numParticlesForEachTerrainHeight
+
+      returnData = struct();
+      returnData.hitHybridGuard = false;
+
+      newParticleSet = {};
+      for i=1:numel(terrainHeightData.gammaVals)
+        num_particles = terrainHeightData.numParticlesForEachTerrainHeight(i);
+        seedParticleCopy = CompassGaitParticle.copy(seedParticle);
+        seedParticle.gamma_ = terrainHeightData.gammaVals(i);
+        counter = 0;
+        while (counter < num_particles)
+          particleData = obj.generateParticle(seedParticle, sigmaGlobal);
+          if particleData.hitHybridGuard
+            returnData.hitHybridGuard = true;
+            continue;
+          end
+          newParticleSet{end+1} = particleData.particle;
+          counter = counter + 1;
+        end
+      end
+
+      obj.particleSet_ = newParticleSet;
     end
 
     function plotParticleSet(obj, particleSet, figHandle, options)
@@ -292,6 +351,12 @@ classdef CompassGaitParticleFilter < handle
         processNoiseGlobal = 0*processNoiseGlobal;
       end
 
+      % adjust the slope of the ground if necessary
+      % otherwise use the default
+      if particle.gamma_ > -10
+        obj.plant_.gamma = particle.gamma_;
+      end
+
       [x_final, hybridSwitch, finalHybridMode, outputData] = obj.plant_.simulateThroughHybridEvent(particle.hybridMode_, x_initial, tspan, uGlobal, processNoiseGlobal);
 
       x_final_global = obj.cgUtils_.transformLocalStateToGlobalState(finalHybridMode, x_final);
@@ -305,6 +370,29 @@ classdef CompassGaitParticleFilter < handle
       y_hat = [particle.x_.qL, particle.x_.qR];
       y = reshape(y,[1,2]);
       particle.importanceWeight_ = mvnpdf(y_hat, y, obj.getMeasurementNoiseCovarianceMatrix(dt));      
+    end
+
+    function applyObserverMeasurementUpdate(obj, yGlobal, dt)
+      for i=1:length(obj.particleSet_)
+        obj.applyObserverMeasurementUpdateSingleParticle(obj.particleSet_{i},yGlobal,dt);
+      end
+    end
+
+    function applyObserverMeasurementUpdateSingleParticle(obj, particle, yGlobal, dt)
+      xLocal = obj.cgUtils_.transformGlobalStateToLocalState(particle.hybridMode_, particle.x_);
+
+      yLocal = obj.cgUtils_.transformObservationGlobalToLocal(particle.hybridMode_, yGlobal);
+      yLocal = reshape(yLocal, 2, 1);
+      yLocal_hat = obj.observationMatrix_*xLocal;
+
+      xLocalNew = xLocal + dt*obj.observerGain_*(yLocal - yLocal_hat);
+
+      % only do this update if it doesn't cross the hybrid guard
+      if obj.plant_.footCollisionGuardGammaArg(xLocalNew, particle.gamma_) >= 0
+        xGlobalNew = obj.cgUtils_.transformLocalStateToGlobalState(particle.hybridMode_, xLocalNew);
+        particle.x_ = xGlobalNew;
+        
+      end
     end
 
     % observation variance should scale by 1/dt

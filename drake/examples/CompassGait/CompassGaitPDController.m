@@ -88,6 +88,22 @@ classdef CompassGaitPDController < handle
       data.linearTerm = inv(H)*B;
     end
 
+    function data = computeControlDataFromParticle(obj, particle)
+      xLocal = obj.cgUtils_.transformGlobalStateToLocalState(particle.hybridMode_, particle.x_);
+
+      [~,data] = obj.getControlInput(xLocal);
+      data.uGlobal = obj.cgUtils_.transformLocalControlToGlobalControl(particle.hybridMode_, data.uLocal);
+
+      if (particle.hybridMode_ == 1)
+        data.linearTermGlobal = data.linearTerm;
+      else
+        data.linearTermGlobal = -data.linearTerm;
+      end
+
+      data.particle = particle;
+
+    end
+
     function [u, controlData] = getControlInput(obj, xLocal)
       dynamicsData = obj.computeDynamicsData(xLocal);
 
@@ -107,6 +123,7 @@ classdef CompassGaitPDController < handle
       u = (swingAcc_des - dynamicsData.constantTerm(1))/dynamicsData.linearTerm(1);
 
       controlData = dynamicsData;
+      controlData.uLocal = u;
       controlData.phaseVar = phaseVar;
       controlData.swingAcc_ff = swingAcc_ff;
       controlData.swingAcc_fb = swingAcc_fb;
@@ -124,6 +141,46 @@ classdef CompassGaitPDController < handle
         controlData.linearTerm = -controlData.linearTerm;
       end
     end
+
+    function particleSetData = computeControlDataForParticleSet(obj, particleSet)
+      particleSetData = {};
+
+      for i=1:numel(particleSet)
+        particleSetData{end+1} = obj.computeControlDataFromParticle(particleSet{i});
+      end
+    end
+
+    function [costVal, returnData] = robustCostFunction(obj, particleSetData, dt, uIn)
+      swingAcc_actual = [];
+      swingAcc_des = [];
+      pdCostArray = [];
+
+      for i=1:numel(particleSetData)
+        d = particleSetData{i};
+        swingAcc_des(end+1) = d.swingAcc;
+        swingAcc_actual(end+1) = d.constantTerm(1) + d.linearTermGlobal(1)*uIn;
+
+        pdCostArray(end+1) = (swingAcc_des(i) - swingAcc_actual(i))^2;
+      end
+
+      returnData = struct();
+      costVal = 1.0/numel(particleSetData)*sum(pdCostArray);
+    end
+
+    function [uGlobal, returnData] = computeRobustControlFromParticleSet(obj, particleSet, varargin)
+
+      particleSetData = obj.computeControlDataForParticleSet(particleSet);
+      dt_hack = 0;
+
+      function costVal = costFun(uIn)
+        [costVal, returnData] = obj.robustCostFunction(particleSetData, dt_hack, uIn);
+      end
+
+      u_opt_init = 0;
+      uGlobal = fminunc(@(u) costFun(u), u_opt_init);
+
+      returnData.costFun = @(u) costFun(u);
+    end    
 
 
     function plotDerivativeTrajectory(obj)

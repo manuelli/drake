@@ -9,6 +9,8 @@ classdef CompassGaitObserver < handle
 		hybridMode_;
 		cgUtils_;
 		zeroProcessNoiseLocal_;
+    lastResetTime_ = -100; % default initialization, so that no it looks like no reset has happened recently
+    name_ = '';
 	end
 
 	methods
@@ -49,11 +51,30 @@ classdef CompassGaitObserver < handle
 			obj.xLocal_ = obj.plant_.simulateWithConstantControlInputODE4IgnoreHybridGuard(obj.xLocal_, tspan, uLocal, obj.zeroProcessNoiseLocal_);
 		end
 
+    function hybridSwitch = applyMotionModelWithHybridGuard(obj, uGlobal, dt)
+      tspan = [0, dt];
+      uLocal = obj.cgUtils_.transformGlobalControlToLocalControl(obj.hybridMode_, uGlobal);
+
+      % propagate the model forward without using the hybrid guard stuff
+      % now propagate dynamics forwards, ignoring hybrid guard
+      processNoiseGlobal = zeros(4,1); % just want pure forward sim
+      tspan = [0,dt];
+
+      [x_final, hybridSwitch, finalHybridMode, outputData] = obj.plant_.simulateThroughHybridEvent(obj.hybridMode_, obj.xLocal_, tspan, uGlobal, processNoiseGlobal);
+
+      obj.xLocal_ = x_final;
+      obj.hybridMode_ = finalHybridMode;
+
+      if hybridSwitch
+        disp('observer hit hybrid guard');
+      end
+    end
+
 		% assume observations of both positions
 		% dt is how long it's been since the last observation
 		function applyMeasurementUpdate(obj, yGlobal, dt)
 			yLocal = obj.cgUtils_.transformObservationGlobalToLocal(obj.hybridMode_, yGlobal);
-            yLocal = reshape(yLocal, 2, 1);
+      yLocal = reshape(yLocal, 2, 1);
 			yLocal_hat = obj.observationMatrix_*obj.xLocal_;
 			obj.xLocal_ = obj.xLocal_ + dt*obj.observerGain_*(yLocal - yLocal_hat);
 		end

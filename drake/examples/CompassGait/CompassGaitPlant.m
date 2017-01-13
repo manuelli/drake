@@ -47,6 +47,11 @@ classdef CompassGaitPlant < HybridDrakeSystem
       g = x(1)+x(2)+2*obj.gamma;  % theta_st - gamma <= - (theta_sw - gamma) 
       dg = [0,1,1,0,0,0];
     end
+
+    function g = footCollisionGuardGammaArg(obj,x,gammaIn)
+      g = x(1)+x(2)+2*gammaIn;
+      g = max(g, -x(1));
+    end
     
     function [g,dg] = footCollisionGuard2(obj,t,x,u);
       g = -x(1);   % theta_st >= 0

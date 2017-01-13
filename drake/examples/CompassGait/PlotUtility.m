@@ -205,7 +205,7 @@ classdef PlotUtility < handle
 
         uReset(end+1) = obj.inputData_.hzdController.getControlInputFromGlobalState(tHack, nextParticle.hybridMode_, nextParticle.x_);
 
-        uBlend(end+1) = optimizationWeight* uNormal(end) + optimizationWeightReset* uReset(end)
+        uBlend(end+1) = optimizationWeight* uNormal(end) + optimizationWeightReset* uReset(end);
 
         particleSet = {particle, nextParticle};
         uRobust(end+1) = obj.inputData_.hzdController.computeRobustControlFromParticleSet(particleSet, dtHack);

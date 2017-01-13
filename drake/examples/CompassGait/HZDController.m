@@ -22,7 +22,6 @@ classdef HZDController < SimpleController
     hdTraj_dderiv;
 
     xtraj; % the nominal trajectory that is passed in
-    xtrajDot;
     utraj;
 
     cgUtils;
@@ -845,6 +844,11 @@ classdef HZDController < SimpleController
         data.V_dot_linear = -data.V_dot_linear;
       end
     end
+
+    % function [uGlobal, data] = computeStandardControlFromParticleSet(obj, particleSet)
+
+    %   particleSetData = CompassGaitParticle.getAvgParticleInMostLikelyMode(particleSet)
+    % end
 
 
     function [uRobust,data] = computeRobustControlFromParticleSet(obj, particleSet, dt)
