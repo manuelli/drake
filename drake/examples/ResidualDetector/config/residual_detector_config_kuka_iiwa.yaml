@@ -1,0 +1,6 @@
+robot_data:
+  urdf: /examples/kuka_iiwa_arm/urdf/iiwa14_simplified_collision.urdf
+  robot_type: kuka_iiwa
+
+residual_detector:
+  gain: 20.0
