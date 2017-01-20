@@ -1,0 +1,214 @@
+# numContacts = 1
+
+**********MOTION********
+         34729 function calls in 0.115 seconds
+
+   Ordered by: internal time
+   List reduced from 142 to 14 due to restriction <0.1>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      900    0.010    0.000    0.025    0.000 contactpointlocator.py:111(findClosestPointSingleLink)
+      900    0.009    0.000    0.009    0.000 {built-in method FindClosestPoint}
+       47    0.009    0.000    0.017    0.000 doccer.py:128(indentcount_lines)
+       50    0.005    0.000    0.035    0.001 contactpointlocator.py:97(findClosestPoint)
+       45    0.005    0.000    0.104    0.002 contactfilter.py:1678(motionModelSingleCFP)
+      393    0.005    0.000    0.005    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+     1972    0.004    0.000    0.004    0.000 {numpy.core.multiarray.array}
+     6225    0.004    0.000    0.004    0.000 {len}
+     2748    0.003    0.000    0.003    0.000 {built-in method TransformPoint}
+       50    0.003    0.000    0.014    0.000 {method 'multivariate_normal' of 'mtrand.RandomState' objects}
+       50    0.003    0.000    0.017    0.000 contactfilter.py:1754(createContactFilterPoint)
+      950    0.003    0.000    0.003    0.000 {built-in method GetLinearInverse}
+     3666    0.002    0.000    0.002    0.000 {method 'lstrip' of 'str' objects}
+       47    0.002    0.000    0.022    0.000 doccer.py:12(docformat)
+
+
+
+avg QP Solve Time:  0.000214319229126
+total QP Solve Time  0.0109641551971
+measurement update time:  0.016881942749
+
+**************************
+
+**********MEASUREMENT********
+         9494 function calls in 0.046 seconds
+
+   Ordered by: internal time
+   List reduced from 216 to 22 due to restriction <0.1>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      532    0.005    0.000    0.008    0.000 {numpy.core.multiarray.array}
+       51    0.004    0.000    0.027    0.001 contactfilter.py:458(computeSingleLikelihood)
+       51    0.004    0.000    0.013    0.000 forcespro_qp_1_contact_point_py.py:135(forcespro_qp_1_contact_point_solve)
+       51    0.002    0.000    0.003    0.000 _internal.py:361(_dtype_from_pep3118)
+       51    0.002    0.000    0.003    0.000 contactfilter.py:1963(geometricJacobian)
+      565    0.002    0.000    0.002    0.000 {numpy.core._dotblas.dot}
+      102    0.002    0.000    0.002    0.000 ctypeslib.py:418(as_ctypes)
+       50    0.002    0.000    0.007    0.000 _distn_infrastructure.py:825(rvs)
+       51    0.002    0.000    0.018    0.000 forcesproqp.py:102(solve)
+      154    0.001    0.000    0.001    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+       51    0.001    0.000    0.001    0.000 forcesproqp.py:129(parseModelSolution)
+        1    0.001    0.001    0.027    0.027 contactfilter.py:541(measurementUpdateSingleParticleSet)
+      102    0.001    0.000    0.001    0.000 numeric.py:586(require)
+        2    0.001    0.000    0.003    0.001 doccer.py:12(docformat)
+        2    0.001    0.000    0.001    0.001 doccer.py:128(indentcount_lines)
+       52    0.001    0.000    0.001    0.000 CPF_particle_t.py:28(_encode_one)
+       51    0.001    0.000    0.001    0.000 {numpy.core.multiarray.concatenate}
+       50    0.001    0.000    0.002    0.000 function_base.py:1628(_vectorize_call)
+      729    0.000    0.000    0.000    0.000 {len}
+       50    0.000    0.000    0.001    0.000 _distn_infrastructure.py:2349(_drv_ppf)
+        1    0.000    0.000    0.012    0.012 contactfilter.py:837(importanceResamplingSingleParticleSet)
+      664    0.000    0.000    0.000    0.000 {method 'append' of 'list' objects}
+
+
+
+avg QP Solve Time:  0.000355110168457
+total QP Solve Time  0.0181374549866
+measurement update time:  0.0273749828339
+
+**************************
+
+
+
+
+
+numContacts = 2
+
+**********MOTION********
+         69437 function calls in 0.177 seconds
+
+   Ordered by: internal time
+   List reduced from 142 to 14 due to restriction <0.1>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       94    0.016    0.000    0.030    0.000 doccer.py:128(indentcount_lines)
+     1800    0.014    0.000    0.036    0.000 contactpointlocator.py:111(findClosestPointSingleLink)
+     1800    0.012    0.000    0.012    0.000 {built-in method FindClosestPoint}
+      100    0.008    0.000    0.051    0.001 contactpointlocator.py:97(findClosestPoint)
+    12448    0.007    0.000    0.007    0.000 {len}
+       90    0.007    0.000    0.159    0.002 contactfilter.py:1678(motionModelSingleCFP)
+     3944    0.006    0.000    0.006    0.000 {numpy.core.multiarray.array}
+      786    0.006    0.000    0.006    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+     5496    0.005    0.000    0.005    0.000 {built-in method TransformPoint}
+      100    0.005    0.000    0.020    0.000 {method 'multivariate_normal' of 'mtrand.RandomState' objects}
+     7332    0.005    0.000    0.005    0.000 {method 'lstrip' of 'str' objects}
+     1900    0.004    0.000    0.004    0.000 {built-in method GetLinearInverse}
+     5730    0.004    0.000    0.004    0.000 {min}
+      100    0.004    0.000    0.024    0.000 contactfilter.py:1754(createContactFilterPoint)
+
+
+
+avg QP Solve Time:  0.000157420635223
+total QP Solve Time  0.0167186260223
+measurement update time:  0.0268089771271
+
+**************************
+
+**********MEASUREMENT********
+         19994 function calls in 0.067 seconds
+
+   Ordered by: internal time
+   List reduced from 216 to 22 due to restriction <0.1>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+     1182    0.008    0.000    0.011    0.000 {numpy.core.multiarray.array}
+      102    0.007    0.000    0.018    0.000 forcespro_qp_2_contact_point_py.py:135(forcespro_qp_2_contact_point_solve)
+      106    0.006    0.000    0.044    0.000 contactfilter.py:458(computeSingleLikelihood)
+      208    0.005    0.000    0.009    0.000 contactfilter.py:1963(geometricJacobian)
+     1476    0.003    0.000    0.003    0.000 {numpy.core._dotblas.dot}
+      106    0.002    0.000    0.002    0.000 forcesproqp.py:129(parseModelSolution)
+      212    0.002    0.000    0.002    0.000 ctypeslib.py:418(as_ctypes)
+      106    0.002    0.000    0.025    0.000 forcesproqp.py:102(solve)
+      106    0.002    0.000    0.003    0.000 _internal.py:361(_dtype_from_pep3118)
+      100    0.001    0.000    0.008    0.000 _distn_infrastructure.py:825(rvs)
+     1434    0.001    0.000    0.001    0.000 {len}
+        4    0.001    0.000    0.002    0.001 doccer.py:128(indentcount_lines)
+      104    0.001    0.000    0.002    0.000 CPF_particle_t.py:28(_encode_one)
+      212    0.001    0.000    0.002    0.000 numeric.py:586(require)
+        4    0.001    0.000    0.004    0.001 doccer.py:12(docformat)
+      308    0.001    0.000    0.001    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+     1586    0.001    0.000    0.001    0.000 {method 'append' of 'list' objects}
+      100    0.001    0.000    0.003    0.000 function_base.py:1628(_vectorize_call)
+        2    0.001    0.000    0.043    0.022 contactfilter.py:541(measurementUpdateSingleParticleSet)
+      208    0.001    0.000    0.011    0.000 contactfilter.py:447(computeJacobianToFrictionCone)
+      420    0.001    0.000    0.001    0.000 {method 'reshape' of 'numpy.ndarray' objects}
+        2    0.001    0.000    0.014    0.007 contactfilter.py:837(importanceResamplingSingleParticleSet)
+
+
+
+avg QP Solve Time:  0.000244576931
+total QP Solve Time  0.0259246826172
+measurement update time:  0.0431110858917
+
+**************************
+
+
+
+numContacts = 3
+**********MOTION********
+         104145 function calls in 0.272 seconds
+
+   Ordered by: internal time
+   List reduced from 142 to 14 due to restriction <0.1>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      141    0.024    0.000    0.046    0.000 doccer.py:128(indentcount_lines)
+     2700    0.022    0.000    0.056    0.000 contactpointlocator.py:111(findClosestPointSingleLink)
+     2700    0.020    0.000    0.020    0.000 {built-in method FindClosestPoint}
+      150    0.012    0.000    0.079    0.001 contactpointlocator.py:97(findClosestPoint)
+    18671    0.011    0.000    0.011    0.000 {len}
+      135    0.011    0.000    0.244    0.002 contactfilter.py:1678(motionModelSingleCFP)
+     5916    0.010    0.000    0.010    0.000 {numpy.core.multiarray.array}
+     1179    0.009    0.000    0.009    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+     8244    0.008    0.000    0.008    0.000 {built-in method TransformPoint}
+      150    0.008    0.000    0.032    0.000 {method 'multivariate_normal' of 'mtrand.RandomState' objects}
+    10998    0.007    0.000    0.007    0.000 {method 'lstrip' of 'str' objects}
+     2850    0.006    0.000    0.006    0.000 {built-in method GetLinearInverse}
+      150    0.006    0.000    0.038    0.000 contactfilter.py:1754(createContactFilterPoint)
+     8595    0.006    0.000    0.006    0.000 {min}
+
+
+
+avg QP Solve Time:  0.000210930506388
+total QP Solve Time  0.0338890552521
+measurement update time:  0.052402973175
+
+**************************
+
+**********MEASUREMENT********
+         31626 function calls in 0.123 seconds
+
+   Ordered by: internal time
+   List reduced from 216 to 22 due to restriction <0.1>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      153    0.017    0.000    0.035    0.000 forcespro_qp_3_contact_point_py.py:135(forcespro_qp_3_contact_point_solve)
+     1947    0.015    0.000    0.021    0.000 {numpy.core.multiarray.array}
+      477    0.011    0.000    0.020    0.000 contactfilter.py:1963(geometricJacobian)
+      162    0.011    0.000    0.088    0.001 contactfilter.py:458(computeSingleLikelihood)
+     2733    0.007    0.000    0.007    0.000 {numpy.core._dotblas.dot}
+      162    0.004    0.000    0.004    0.000 forcesproqp.py:129(parseModelSolution)
+      162    0.003    0.000    0.050    0.000 forcesproqp.py:102(solve)
+      324    0.003    0.000    0.003    0.000 ctypeslib.py:418(as_ctypes)
+      162    0.003    0.000    0.005    0.000 _internal.py:361(_dtype_from_pep3118)
+      150    0.002    0.000    0.011    0.000 _distn_infrastructure.py:825(rvs)
+        6    0.002    0.000    0.003    0.001 doccer.py:128(indentcount_lines)
+      162    0.002    0.000    0.002    0.000 {numpy.core.multiarray.concatenate}
+      477    0.002    0.000    0.023    0.000 contactfilter.py:447(computeJacobianToFrictionCone)
+     2144    0.002    0.000    0.002    0.000 {len}
+      324    0.002    0.000    0.003    0.000 numeric.py:586(require)
+      156    0.002    0.000    0.003    0.000 CPF_particle_t.py:28(_encode_one)
+     2670    0.002    0.000    0.002    0.000 {method 'append' of 'list' objects}
+        6    0.001    0.000    0.007    0.001 doccer.py:12(docformat)
+      462    0.001    0.000    0.001    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+      150    0.001    0.000    0.004    0.000 function_base.py:1628(_vectorize_call)
+        3    0.001    0.000    0.084    0.028 contactfilter.py:541(measurementUpdateSingleParticleSet)
+      801    0.001    0.000    0.001    0.000 {method 'reshape' of 'numpy.ndarray' objects}
+
+
+
+avg QP Solve Time:  0.000315953890483
+total QP Solve Time  0.0509040355682
+measurement update time:  0.0836589336395
+
+**************************

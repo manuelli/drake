@@ -1,0 +1,16 @@
+robot_data:
+  urdf: /software/models/atlas_v5/model_LR_RR.urdf
+  robot_type: atlas_v5
+  control_config_filename: /software/config/atlas/control_config_hardware.yaml
+  leftFootName: l_foot
+  rightFootName: r_foot
+  leftFootFTFrameName: l_foot
+  rightFootFTFrameName: r_foot
+
+residual_detector:
+  useFootForceTorque: true
+  gain: 20.0
+
+debug:
+  verbose: false
+

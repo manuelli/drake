@@ -1,0 +1,70 @@
+thresholds:
+  addContactPointTimeout: 0.25
+  removeContactPointTimeout: 0.25
+  addContactPointSquaredError: 20.0 # 20
+  removeContactPointSquaredError: 20.0 # 20 normally
+  removeContactPointForce: 5.0 # this is not actually used
+  squaredErrorBoundForMostLikelyParticleAveraging: 10.0
+  lastTimeBelowThreshold: -100.0 # this is overwritten all the time used as storage
+  timeAboveThresholdToAddParticleSet: 0.1
+
+motionModel:
+  var: 0.001 #0.05
+  varMin: 0.001 # 0.01
+  varMax: 0.0025
+  varMaxSquaredErrorCutoff: 10.0
+
+measurementModel:
+  var: 0.1
+
+addParticleSet:
+  multipleInitialSteps: False
+
+numParticles: 50
+
+debug:
+  publishTrueResidual: True
+  useTrueResidual: False
+  maxNumParticleSets: 4
+  forceThreshold: 1.0
+  
+# note this noise is not added to true residual published by externalForce
+# it is only added internally before computing the various estimates . . .
+noise:
+  addNoise: False
+  stddev: 0.1
+  # maxNoise: 
+
+vis:
+  draw: False
+  publish: True
+  publishVisualizationData: True
+  drawMostLikely: True
+  drawParticles: True
+  drawHistoricalMostLikely: False
+
+solver:
+  solverType: forcespro
+
+externalForce:
+  showActiveLinkEstimate: False
+  publishTrueResidual: False
+
+# this is the haddadin method
+twoStepEstimator:
+  computeEstimate: False
+  visualize: True
+  showContactRay: True
+  publishChannel: TWO_STEP_ESTIMATOR
+
+
+# options for the proposal distribution
+proposal:
+  # fraction of particles that will be sampled with standard motion model
+  # the remaining fraction will be sampled around the historical most likely point
+  normalFraction: 0.9
+  normal:
+    variance: 0.001 # 0.01
+
+  historical:
+    variance: 0.00015 # 0.01

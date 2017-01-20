@@ -35,6 +35,14 @@ struct DrakeRobotState {
   Eigen::VectorXd qd;
 };
 
+struct DrakeRobotStateWithTorque {
+  // drake-ordered position and velocity vectors, with timestamp (in s)
+  double t;
+  Eigen::VectorXd q;
+  Eigen::VectorXd qd;
+  Eigen::VectorXd torque;
+};
+
 bool isSupportElementActive(
     SupportStateElement* se, bool contact_force_detected,
     bool kinematic_contact_detected);
