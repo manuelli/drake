@@ -24,6 +24,8 @@ namespace residual_detector{
     Eigen::VectorXd torque;
   };
 
+
+  // for now this only supports fixed base robots
   class RobotStateDecoder{
   public:
     RobotStateDecoder(){}; // default constructor
@@ -31,6 +33,9 @@ namespace residual_detector{
     DrakeRobotStateWithTorque decodeRobotStateMsg(const bot_core::robot_state_t *msg);
   private:
     std::vector<std::string> state_coordinate_names_;
+    std::map<std::string, int> state_coordinate_map_;
+    int num_positions_;
+//    int num_velocities_;
 
   };
 
