@@ -10,6 +10,7 @@ target_link_libraries(run_residual_detector
     drakeRBM
     drakeMultibodyParsers
     lcmtypes_bot2-core-cpp
+    robotlocomotion-lcmtypes-cpp
     drakeLCMUtil
     drakeMath
     yaml-cpp

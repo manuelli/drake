@@ -9,6 +9,7 @@
 #include "residual_detector_lcm_wrapper.h"
 #include "drake/math/autodiff_gradient.h"
 #include "drake/math/autodiff.h"
+#include "robotlocomotion/residual_observer_state_t.hpp"
 
 namespace residual_detector{
   ResidualDetectorConfig parseResidualDetectorConfig(std::string path_to_file_from_drake_root){
@@ -22,6 +23,9 @@ namespace residual_detector{
     residual_detector_config.urdf_filename = drake::GetDrakePath() + robot_data_yaml["urdf"].as<std::string>();
     residual_detector_config.robot_type = robot_data_yaml["robot_type"].as<std::string>();
     residual_detector_config.residual_gain = config_yaml["residual_detector"]["gain"].as<double>();
+    residual_detector_config.include_friction_torque = config_yaml["residual_detector"]["include_friction_torque"].as<bool>();
+
+    residual_detector_config.publish_channel = config_yaml["residual_detector"]["publish_channel"].as<std::string>();
 
     return residual_detector_config;
   }
@@ -37,8 +41,15 @@ namespace residual_detector{
         drake::multibody::joints::kFixed,
         nullptr /* weld to frame */, rigid_body_tree_.get());
 
-    // initialize the ResidualDetectorState
+
+    // record the state coordinate names, needed when publishing the residual state
     int num_positions = rigid_body_tree_->get_num_positions();
+    state_coordinate_names_.resize(num_positions);
+    for(int i = 0; i < num_positions; i++){
+      state_coordinate_names_[i] = this->rigid_body_tree_->get_position_name(i);
+    }
+
+    // initialize the ResidualDetectorState
     this->internal_state_.residual.resize(num_positions);
     this->internal_state_.gamma.resize(num_positions);
     this->internal_state_.integral.resize(num_positions);
@@ -51,7 +62,14 @@ namespace residual_detector{
 
     // initialize KinematicsCache
     cache_ = std::make_unique<KinematicsCache<template_type>>(this->rigid_body_tree_->CreateKinematicsCacheWithType<template_type>());
-    std::cout << "cache->get_num_positions() " << cache_->get_num_positions() << std::endl;
+
+
+    // check that lcm is good
+    if(!this->lcm_.good()){
+      std::cerr << "Error: lcm is not good()" << std::endl;
+    }
+
+    // end constructor
   }
 
   // sets the robot_state field of ResidualArgs
@@ -76,6 +94,7 @@ namespace residual_detector{
 
     const auto & q = args.robot_state->q;
     const auto & qd = args.robot_state->qd;
+    int num_positions = args.robot_state->q.size();
 
 
 //
@@ -91,6 +110,9 @@ namespace residual_detector{
     auto mass_matrix = autoDiffToValueMatrix(mass_matrix_autodiff);
     auto mass_matrix_gradient = autoDiffToGradientMatrix(mass_matrix_autodiff);
 
+//    std::cout << "mass matrix rows " << mass_matrix_gradient.rows() << std::endl;
+//    std::cout << "mass matrix cols " << mass_matrix_gradient.cols() << std::endl;
+
     // get the gravity term
     // note that we set velocity to zero by only initializing the KinematicsCache with a
     // position argument
@@ -98,6 +120,15 @@ namespace residual_detector{
     auto gravity_term_autodiff = this->rigid_body_tree_->dynamicsBiasTerm(*this->cache_, no_external_wrenches, false);
     auto gravity_term = autoDiffToValueMatrix(gravity_term_autodiff);
 
+    // Friction Torque
+    // This appears w/ plus on LHS of manipulator equations
+    // H(q)qdd + C(q,qd)qd + g(q) + friction_torques = torque
+    VectorXd friction_torques;
+    if (this->residual_detector_config_.include_friction_torque){
+      friction_torques = this->rigid_body_tree_->frictionTorques(qd);
+    }else{
+      friction_torques = VectorXd::Zero(num_positions);
+    }
 
 
     // special case to handle uninitialized state
@@ -105,35 +136,48 @@ namespace residual_detector{
       residual_detector_state.t_prev = args.robot_state->t;
       // generalized momentum at time 0
       residual_detector_state.p_0 = mass_matrix * args.robot_state->qd;
+      residual_detector_state.residual = residual_detector_state.p_0;
       residual_detector_state.initialized = true;
       return;
     }
 
 
-    int num_positions = args.robot_state->q.size();
+
+
+    // computes gravity - qdot * partial M/ partial q * qdot term
     for(int i=0; i < num_positions; i++){
-      int row_idx = i*num_positions;
-      residual_detector_state.gamma(i) = gravity_term(i) -
-          1/2.0*qd.transpose()*mass_matrix_gradient.block(row_idx, 0, num_positions, num_positions)*qd;
+      auto gradient_col = mass_matrix_gradient.col(i); // vectorized version of dMdqi
+      auto dMdqi = Map<MatrixXd>(gradient_col.data(), num_positions, num_positions); // reshape
+      residual_detector_state.gamma(i) = gravity_term(i) + friction_torques(i)
+          - 1/2.0*qd.transpose()*dMdqi*qd;
     }
+
+    VectorXd generalized_momentum = mass_matrix * args.robot_state->qd;
 
     // time delta since previous call
     double dt = args.robot_state->t - residual_detector_state.t_prev;
 
     residual_detector_state.integral = residual_detector_state.integral
-        + (residual_detector_state.gamma - args.robot_state->torque - gravity_term)*dt;
+        + (residual_detector_state.gamma - args.robot_state->torque - residual_detector_state.residual)*dt;
 
     residual_detector_state.residual = this->residual_detector_config_.residual_gain
-                                       *(residual_detector_state.integral + residual_detector_state.residual
-                                       - residual_detector_state.p_0);
+                                       *(residual_detector_state.integral
+                                         + generalized_momentum
+                                         - residual_detector_state.p_0);
 
 
     residual_detector_state.t_prev = args.robot_state->t;
 
     bool verbose = false;
     if (verbose) {
-          std::cout << "performing residual detector update" << std::endl;
-          std::cout << "dt was " << dt << std::endl;
+      std::cout << "\n \n " << std::endl;
+      std::cout << "performing residual detector update" << std::endl;
+//      std::cout << "dt was " << dt << std::endl;
+//      std::cout << "gravity term " << gravity_term << std::endl;
+//      std::cout << "measured torque " << args.robot_state->torque << std::endl;
+//      std::cout << "integral " << residual_detector_state.integral;
+//      std::cout << "residual " << residual_detector_state.residual;
+      std::cout << "friction torques " << friction_torques << std::endl;
       }
   }
 
@@ -147,6 +191,31 @@ namespace residual_detector{
 
     this->ResidualDetectorUpdate(this->internal_state_, input_args_);
     this->new_state_available_ = false;
+
+    // publish it
+    this->PublishResidualState(this->internal_state_);
+  }
+
+  void ResidualDetector::PublishResidualState(const ResidualDetectorState &residual_detector_state) {
+    robotlocomotion::residual_observer_state_t msg;
+
+    msg.utime = static_cast<int64_t> (residual_detector_state.t_prev*1e6);
+    int num_positions = residual_detector_state.residual.size();
+    msg.num_joints = (int16_t) num_positions;
+    msg.joint_name = this->state_coordinate_names_;
+
+    msg.residual.resize(num_positions);
+    msg.gravity.resize(num_positions);
+    msg.internal_torque.resize(num_positions);
+    msg.foot_contact_torque.resize(num_positions);
+
+    for(int i=0; i < num_positions; i++){
+      msg.residual[i] = (float) residual_detector_state.residual(i);
+    }
+
+    this->lcm_.publish(this->residual_detector_config_.publish_channel, &msg);
+
+//    std::cout << "publishing message on channel " << this->residual_detector_config_.publish_channel << std::endl;
   }
 
   void ResidualDetector::ThreadLoop(){

@@ -41,6 +41,8 @@ namespace residual_detector{
     std::string robot_type;
     std::string urdf_filename;
     double residual_gain;
+    bool include_friction_torque;
+    std::string publish_channel;
   };
 
   ResidualDetectorConfig parseResidualDetectorConfig(std::string path_to_file_from_drake_root);
@@ -58,10 +60,14 @@ namespace residual_detector{
     std::mutex residual_args_lock_;
     std::unique_ptr<KinematicsCache<template_type >> cache_;
     bool new_state_available_;
+    lcm::LCM lcm_;
+    std::vector<std::string> state_coordinate_names_;
 
     void ResidualDetectorUpdate(ResidualDetectorState& residual_detector_state, const ResidualDetectorInputArgs args);
 
     void ResidualDetectorUpdateWrapper();
+
+    void PublishResidualState(const ResidualDetectorState & residual_detector_state);
   };
 
 

@@ -39,7 +39,7 @@ namespace residual_detector{
   void ResidualDetectorLCMWrapper::onRobotState(const lcm::ReceiveBuffer *rbuf, const std::string &channel,
                                                 const bot_core::robot_state_t *msg) {
 
-    std::cout << "got a robot state message " << std::endl;
+//    std::cout << "got a robot state message " << std::endl;
     std::shared_ptr<DrakeRobotStateWithTorque> robot_state = this->robot_state_decoder_.decodeRobotStateMsg(msg);
 
     this->residual_detector_.SetRobotState(robot_state);

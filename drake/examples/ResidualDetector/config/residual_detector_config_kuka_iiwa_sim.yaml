@@ -3,4 +3,6 @@ robot_data:
   robot_type: kuka_iiwa
 
 residual_detector:
-  gain: 20.0
+  gain: 100.0
+  include_friction_torque: true
+  publish_channel: RESIDUAL_OBSERVER_STATE
