@@ -12,6 +12,7 @@ def onIiwaStatus(msg):
 
     # doesn't publish velocity for some reason
     for i in xrange(0,numJoints):
+    	stateMsg.joint_velocity[i] = msg.joint_velocity_measured[i]
     	stateMsg.joint_effort[i] = msg.joint_torque_measured[i]
 
     stateMsg.utime = msg.utime
