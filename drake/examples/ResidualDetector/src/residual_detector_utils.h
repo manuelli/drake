@@ -30,7 +30,7 @@ namespace residual_detector{
   public:
     RobotStateDecoder(){}; // default constructor
     RobotStateDecoder(std::shared_ptr<RigidBodyTree<double>> robot);
-    DrakeRobotStateWithTorque decodeRobotStateMsg(const bot_core::robot_state_t *msg);
+    std::shared_ptr<DrakeRobotStateWithTorque> decodeRobotStateMsg(const bot_core::robot_state_t *msg);
   private:
     std::vector<std::string> state_coordinate_names_;
     std::map<std::string, int> state_coordinate_map_;

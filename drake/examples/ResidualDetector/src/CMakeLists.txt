@@ -11,5 +11,6 @@ target_link_libraries(run_residual_detector
     drakeMultibodyParsers
     lcmtypes_bot2-core-cpp
     drakeLCMUtil
+    drakeMath
     yaml-cpp
     lcm)

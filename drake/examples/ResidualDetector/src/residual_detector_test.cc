@@ -33,5 +33,9 @@ int main( int argc, char* argv[]){
   std::thread & lcm_thread_handle = residual_detector_lcm_wrapper.lcm_handler_.ThreadHandle;
   std::cout << "blocking until that thread finishes" << std::endl;
 
+  // main loop of residual detector
+  std::thread residual_detector_thread_handle = std::thread(&ResidualDetector::ThreadLoop, &residual_detector);
+
   lcm_thread_handle.join();
+  residual_detector_thread_handle.join();
 }

@@ -25,11 +25,7 @@ namespace residual_detector{
 
 
     void onRobotState(const lcm::ReceiveBuffer* rbuf, const std::string& channel,
-                      const bot_core::robot_state_t* msg){
-
-      std::cout << "got a robot state message " << std::endl;
-      DrakeRobotStateWithTorque robot_state = this->robot_state_decoder_.decodeRobotStateMsg(msg);
-    }
+                      const bot_core::robot_state_t* msg);
   };
 }
 

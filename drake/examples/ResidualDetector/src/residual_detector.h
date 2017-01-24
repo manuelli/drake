@@ -12,6 +12,7 @@
 #include <lcm/lcm-cpp.hpp>
 #include "residual_detector_utils.h"
 #include "drake/multibody/rigid_body_tree.h"
+#include "drake/common/eigen_autodiff_types.h"
 
 
 #ifndef DRAKE_DISTRO_RESIDUAL_DETECTOR_H
@@ -19,6 +20,8 @@
 
 namespace residual_detector{
 
+  using namespace drake; // so we can easily call autodiff types
+  typedef AutoDiffXd template_type;
 
   struct ResidualDetectorState{
     double t_prev;
@@ -27,10 +30,11 @@ namespace residual_detector{
     Eigen::VectorXd gamma;
     Eigen::VectorXd integral;
     Eigen::VectorXd p_0; // momentum at t = 0;
+    bool initialized;
   };
 
   struct ResidualDetectorInputArgs{
-    DrakeRobotStateWithTorque robot_state;
+    std::shared_ptr<DrakeRobotStateWithTorque> robot_state;
   };
 
   struct ResidualDetectorConfig{
@@ -44,10 +48,20 @@ namespace residual_detector{
   class ResidualDetector {
   public:
     ResidualDetector(ResidualDetectorConfig & residual_detector_config);
-
+    void SetRobotState(std::shared_ptr<DrakeRobotStateWithTorque> robot_state);
+    void ThreadLoop();
   private:
     ResidualDetectorConfig residual_detector_config_;
     std::unique_ptr<RigidBodyTree<double>> rigid_body_tree_;
+    ResidualDetectorInputArgs input_args_;
+    ResidualDetectorState internal_state_;
+    std::mutex residual_args_lock_;
+    std::unique_ptr<KinematicsCache<template_type >> cache_;
+    bool new_state_available_;
+
+    void ResidualDetectorUpdate(ResidualDetectorState& residual_detector_state, const ResidualDetectorInputArgs args);
+
+    void ResidualDetectorUpdateWrapper();
   };
 
 
