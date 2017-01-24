@@ -54,6 +54,7 @@ IiwaStatusSender::AllocateOutput(
   msg.joint_position_measured.resize(msg.num_joints, 0);
   msg.joint_position_commanded.resize(msg.num_joints, 0);
   msg.joint_position_ipo.resize(msg.num_joints, 0);
+  msg.joint_velocity_measured.resize(msg.num_joints, 0);
   msg.joint_torque_measured.resize(msg.num_joints, 0);
   msg.joint_torque_commanded.resize(msg.num_joints, 0);
   msg.joint_torque_external.resize(msg.num_joints, 0);
@@ -78,6 +79,7 @@ void IiwaStatusSender::DoCalcOutput(
   for (int i = 0; i < kNumJoints; ++i) {
     status.joint_position_measured[i] = state->GetAtIndex(i);
     status.joint_position_commanded[i] = command->GetAtIndex(i);
+    status.joint_velocity_measured[i] = state->GetAtIndex(kNumJoints + i);
   }
 }
 
