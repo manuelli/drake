@@ -29,6 +29,9 @@ set_paths()
       done
     fi
   done
+
+  # extra special case to handle robotlocomotion-lcmtypes.jar
+  export CLASSPATH=$CLASSPATH:$DRAKE_BUILD_DIR/install/share/java/robotlocomotion-lcmtypes.jar
 }
 
 set_drake_dirs
