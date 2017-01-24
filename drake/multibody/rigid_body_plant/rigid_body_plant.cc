@@ -24,6 +24,7 @@ using DrakeCollision::ElementId;
 
 namespace drake {
 namespace systems {
+  VectorX<double> HACK_U;
 namespace {
 // Constant used to indicate that a model instance doesn't have an
 // input/output port associated with it.
@@ -436,6 +437,12 @@ void RigidBodyPlant<T>::DoCalcTimeDerivatives(
       DRAKE_ASSERT(instance_actuators.first != kInvalidPortIdentifier);
       u.segment(instance_actuators.first, instance_actuators.second) =
           instance_input->get_value();
+
+      // TODO(manuelli): Hacky way to make torques accessible
+      HACK_U.resize(get_num_actuators());
+      for(int i = 0; i < get_num_actuators(); i++){
+        HACK_U(i) = u(i);
+      }
     }
   }
 

@@ -15,6 +15,7 @@
 namespace drake {
 namespace systems {
 
+  extern VectorX<double> HACK_U;
 /// This class provides a System interface around a multibody dynamics model
 /// of the world represented by a RigidBodyTree.
 ///

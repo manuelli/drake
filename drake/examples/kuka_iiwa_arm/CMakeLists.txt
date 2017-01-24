@@ -6,6 +6,7 @@ if(lcm_FOUND)
     drakeIK
     drakeLCMSystem2
     drakeRBM
+    drakeRigidBodyPlant
     drakeMultibodyParsers)
   drake_install_libraries(drakeKukaIiwaArmCommon)
   drake_install_headers(

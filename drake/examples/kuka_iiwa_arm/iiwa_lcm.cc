@@ -3,6 +3,9 @@
 #include "drake/lcmt_iiwa_command.hpp"
 #include "drake/lcmt_iiwa_status.hpp"
 
+// include this so we can get torques out
+#include "drake/multibody/rigid_body_plant/rigid_body_plant.h"
+
 namespace drake {
 namespace examples {
 namespace kuka_iiwa_arm {
@@ -80,6 +83,10 @@ void IiwaStatusSender::DoCalcOutput(
     status.joint_position_measured[i] = state->GetAtIndex(i);
     status.joint_position_commanded[i] = command->GetAtIndex(i);
     status.joint_velocity_measured[i] = state->GetAtIndex(kNumJoints + i);
+
+    if(drake::systems::HACK_U.size() == kNumJoints){
+      status.joint_torque_measured[i] = drake::systems::HACK_U(i);
+    }
   }
 }
 
