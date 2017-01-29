@@ -28,16 +28,17 @@ import yaml
 
 from director import drcargs
 from director import utime as utimeUtil
-from contactfilter import PythonDrakeModel
+from pythondrakemodel import PythonDrakeModel
 from twostepestimator import TwoStepEstimator
 
 Wrench_Time = namedtuple('wrenchTime', ['wrench','time'])
 class ExternalForce(object):
 
-    def __init__(self, robotSystem):
+    def __init__(self, robotSystem, configFilename="contact_particle_filter_config.yaml"):
         self.robotSystem = robotSystem
         self.robotStateModel = robotSystem.robotStateModel
         self.robotStateModel.connectModelChanged(self.onModelChanged)
+        self.initializeOptions(configFilename)
 
         self.loadDrakeModelFromFilename()
         self.initializeJointNamesList()
@@ -52,7 +53,7 @@ class ExternalForce(object):
         self.addSubscribers()
         self.createPlunger()
         self.createMeshDataAndLocators()
-        self.initializeOptions()
+
         self.createTwoStepEstimator()
 
         self.visObjectDrawTime = dict()
@@ -104,7 +105,8 @@ class ExternalForce(object):
             self.linkMeshData[linkName] = data
 
     def createTwoStepEstimator(self):
-        self.twoStepEstimator = TwoStepEstimator(self.robotStateModel, self.robotSystem.robotStateJointController, self.linkMeshData)
+        self.twoStepEstimator = TwoStepEstimator(self.robotStateModel, self.robotSystem.robotStateJointController,
+                                                 self.linkMeshData, self.options)
 
     # either get the EST_ROBOT_STATE utime or just use the wall clock
     def getUtime(self):
@@ -131,18 +133,18 @@ class ExternalForce(object):
     def initializeOptions(self, configFilename="contact_particle_filter_config.yaml"):
 
         # load the options from the config file
-        drcBase = os.getenv("DRC_BASE")
-        fullFileName = drcBase+'/software/control/residual_detector/config/' + configFilename
+        drake_source_dir = os.getenv("DRAKE_SOURCE_DIR")
+        fullFileName = drake_source_dir +'/drake/examples/ContactParticleFilter/config/' + configFilename
         stream = file(fullFileName)
         self.options = yaml.load(stream)
 
 
     def loadDrakeModelFromFilename(self, filename=None):
-        print "loading drake model . . . "
-        self.drakeModel = PythonDrakeModel()
-        self.drakeModel.loadRobotModelFromURDFFilename(filename)\
+        urdf_filename = self.options['robot']['urdf']
+        floatingBaseTypeString = self.options['robot']['floatingBaseType']
 
-    # gets the list of joint names and makes sure they are in string form
+        self.drakeModel = PythonDrakeModel(floatingBaseTypeString, urdf_filename)
+
     def initializeJointNamesList(self):
         jointNamesTuple = self.drakeModel.model.getJointNames()
         jointNames = []
@@ -207,6 +209,8 @@ class ExternalForce(object):
         self.externalForces[key] = d
         self.updateContactWrench(key)
         self.drawForces()
+
+
 
     def computeWrench(self, linkName, forceDirection, forceMagnitude, forceLocation):
         outputFrame = vtk.vtkTransform()
@@ -284,7 +288,7 @@ class ExternalForce(object):
 
         tol = 1e-3
         numExternalForces = 0
-        msg = lcmdrake.lcmt_external_force_torque()
+        msg = robotlocomotion_lcmtypes.external_force_torque_t()
 
         msgMultipleContactLocations = robotlocomotion_lcmtypes.multiple_contact_location_t()
         trueResidual = np.zeros((self.drakeModel.numJoints,))

@@ -15,6 +15,7 @@ import sys
 import yaml
 import cProfile
 import pstats
+from enum import Enum
 
 
 # director imports
@@ -36,6 +37,7 @@ import contactpointlocator
 import contactfilterutils as cfUtils
 import contactfiltergurobi
 import qpsolver
+from pythondrakemodel import PythonDrakeModel
 
 
 
@@ -103,7 +105,7 @@ class ContactFilter(object):
         else:
             lcmUtils.addSubscriber('RESIDUAL_OBSERVER_STATE', robotlocomotion_lcmtypes.residual_observer_state_t,
                                    self.onResidualObserverState)
-        lcmUtils.addSubscriber('EXTERNAL_FORCE_TORQUE', lcmdrake.lcmt_external_force_torque,
+        lcmUtils.addSubscriber('EXTERNAL_FORCE_TORQUE', robotlocomotion_lcmtypes.external_force_torque_t,
                                self.onExternalForceTorque)
 
         lcmUtils.addSubscriber("EXTERNAL_CONTACT_LOCATION", robotlocomotion_lcmtypes.multiple_contact_location_t, self.onExternalContactLocation)
@@ -264,7 +266,7 @@ class ContactFilter(object):
     def loadDrakeModelFromFilename(self, filename=None):
         print "loading drake model . . . "
         self.drakeModel = PythonDrakeModel()
-        self.drakeModel.loadRobotModelFromURDFFilename(filename)
+        self.drakeModel.loadRobotModelFromURDFFilename(None, filename)
 
 
     def squaredErrorNoContacts(self, verbose=True, residual=None):
@@ -1896,77 +1898,6 @@ class ContactFilter(object):
         msg = ContactFilter.encodeCPFData(self.currentUtime, self.particleSetList)
         return ContactFilter.decodeCPFData(msg)
 
-
-
-class PythonDrakeModel(object):
-
-    def __init__(self):
-        self.loadRobotModelFromURDFFilename()
-        self.jointMap = self.getJointMap()
-        self.jointNames = self.model.getJointNames()
-
-
-    def loadRobotModelFromURDFFilename(self, filename=None):
-        if filename is None:
-            drcBase = os.getenv("DRC_BASE")
-            # modelName = "model_LR_RR.urdf"
-
-
-            # TODO (manuelli): Make this read from config file
-            args = drcargs.getGlobalArgParser().getArgs()
-            urdf = '/drake/examples/kuka_iiwa_arm/urdf/iiwa14_simplified_collision.urdf'
-            drake_source_dir = os.getenv('DRAKE_SOURCE_DIR')
-            filename = drake_source_dir + urdf
-            
-        self.model = PythonQt.dd.ddDrakeModel()
-        if not self.model.loadFromFile(filename):
-            print "failed to load model"
-
-        self.nv = self.model.numberOfJoints()
-        self.numJoints = self.model.numberOfJoints()
-
-    def getJointMap(self):
-
-        jointNames = self.model.getJointNames()
-
-        jointMap = dict()
-
-        for idx, jointName in enumerate(jointNames):
-            jointName = str(jointName)
-            jointMap[jointName] = idx
-
-        return jointMap
-
-    def extractDataFromMessage(self, msgJointNames, msgData):
-
-        msgJointMap = {}
-        for msgName, msgData in zip(msgJointNames, msgData):
-            msgJointMap[msgName] = msgData
-
-
-        data = np.zeros(self.numJoints)
-        for jointName, idx in self.jointMap.iteritems():
-            data[idx] = msgJointMap[jointName]
-
-
-        return data
-
-
-    # make sure you call doKinematics before you get here!
-    def geometricJacobian(self, base_body_or_frame_ind, end_effector_body_or_frame_id,
-                          expressed_in_body_or_frame_ind, gradient_order, in_terms_of_qdot=False):
-
-        linkJacobianVec = np.array(self.model.geometricJacobian(base_body_or_frame_ind, end_effector_body_or_frame_id,
-                          expressed_in_body_or_frame_ind, gradient_order, in_terms_of_qdot));
-
-        linkJacobian = linkJacobianVec.reshape(6,self.nv)
-
-        return linkJacobian
-
-    def testGeometricJacobian(self):
-        q = np.zeros(self.nv)
-        self.model.doKinematics(q,0*q,False, False)
-        return self.geometricJacobian(0,1,1,0,False)
 
 
 # class to store data about the location of the contact point, the contact normal etc.
