@@ -4,22 +4,20 @@ from director import transformUtils
 import director.vtkAll as vtk
 
 
-from contactfilter import PythonDrakeModel
+from pythondrakemodel import PythonDrakeModel
 import numpy as np
 
 class TwoStepEstimator:
 
-    def __init__(self, robotStateModel, robotStateJointController, linkMeshData):
+    def __init__(self, robotStateModel, robotStateJointController, linkMeshData, config):
         self.robotStateModel = robotStateModel
         self.robotStateJointController = robotStateJointController
-        self.loadDrakeModelFromFilename()
+        self.config = config
+        self.createDrakeModel()
         self.linkMeshData = linkMeshData
 
-    def loadDrakeModelFromFilename(self, filename=None):
-        print "loading drake model . . . "
-        self.drakeModel = PythonDrakeModel()
-        self.drakeModel.loadRobotModelFromURDFFilename(filename)
-
+    def createDrakeModel(self, filename=None):
+        self.drakeModel = PythonDrakeModel(self.config['robot']['floatingBaseType'], self.config['robot']['urdf'])
 
     def getCurrentPose(self):
         return self.robotStateJointController.q
