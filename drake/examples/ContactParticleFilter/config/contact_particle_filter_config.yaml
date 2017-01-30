@@ -1,6 +1,10 @@
 robot:
   urdf: /drake/examples/kuka_iiwa_arm/urdf/iiwa14_simplified_collision.urdf
-  floatingBaseType: ROLLPITCHYAW
+  # options are 
+  # - FIXED
+  # - ROLLPITCHYAW
+  # - QUATERNION (although I don't think quaternion will work at the moment)
+  floatingBaseType: FIXED
 
 data:
   # the particle locations to have when adding a new contact points
@@ -12,12 +16,11 @@ data:
 thresholds:
   addContactPointTimeout: 0.25
   removeContactPointTimeout: 0.25
-  addContactPointSquaredError: 1.0 # 20
-  removeContactPointSquaredError: 1.0 # 20 normally
+  addContactPointSquaredError: 10.0 # 20
+  removeContactPointSquaredError: 10.0 # 20 normally
   removeContactPointForce: 5.0 # this is not actually used
   squaredErrorBoundForMostLikelyParticleAveraging: 10.0
-  lastTimeBelowThreshold: -100.0 # this is overwritten all the time used as storage
-  timeAboveThresholdToAddParticleSet: 0.1
+  timeAboveThresholdToAddParticleSet: 0.2
 
 motionModel:
   var: 0.001 #0.05
@@ -36,7 +39,7 @@ numParticles: 50
 debug:
   publishTrueResidual: True
   useTrueResidual: True
-  maxNumParticleSets: 4
+  maxNumParticleSets: 1
   forceThreshold: 1.0
   
 # note this noise is not added to true residual published by externalForce
@@ -64,7 +67,7 @@ externalForce:
 
 # this is the haddadin method
 twoStepEstimator:
-  computeEstimate: False
+  computeEstimate: True
   visualize: True
   showContactRay: True
   publishChannel: TWO_STEP_ESTIMATOR
