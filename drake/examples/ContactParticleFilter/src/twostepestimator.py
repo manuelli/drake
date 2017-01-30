@@ -1,11 +1,12 @@
 __author__ = 'manuelli'
+import numpy as np
 
 from director import transformUtils
 import director.vtkAll as vtk
 
 
 from pythondrakemodel import PythonDrakeModel
-import numpy as np
+import contactfilterutils as cfUtils
 
 class TwoStepEstimator:
 
@@ -14,13 +15,21 @@ class TwoStepEstimator:
         self.robotStateJointController = robotStateJointController
         self.config = config
         self.createDrakeModel()
+        self.initializeRobotPoseTranslator()
         self.linkMeshData = linkMeshData
 
     def createDrakeModel(self, filename=None):
         self.drakeModel = PythonDrakeModel(self.config['robot']['floatingBaseType'], self.config['robot']['urdf'])
 
+    def initializeRobotPoseTranslator(self):
+        self.robotPoseTranslator = cfUtils.RobotPoseTranslator(self.robotStateModel.model, self.drakeModel.model)
+
+    # be careful here if director and this use different models
+    # for example if we are FIXED base and director has ROLLPITCHYAW
     def getCurrentPose(self):
-        return self.robotStateJointController.q
+        q_director = self.robotStateJointController.q
+        q = self.robotPoseTranslator.translateDirectorPoseToRobotPose(q_director)
+        return q
 
     def computeTwoStepEstimate(self, residual, linksWithContactForce):
         returnData = dict()
@@ -29,7 +38,7 @@ class TwoStepEstimator:
 
         # do kinematics on our internal model
         q = self.getCurrentPose()
-        self.drakeModel.model.doKinematics(q, 0*q, False, False)
+        self.drakeModel.model.setJointPositions(q)
 
         # stack the jacobians
         jacobianTransposeList = []

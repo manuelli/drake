@@ -15,6 +15,7 @@ import sys
 import yaml
 import cProfile
 import pstats
+from collections import namedtuple
 
 
 # director imports
@@ -53,6 +54,7 @@ class ContactFilter(object):
         self.robotStateModel = robotStateModel
         self.initializeOptions(configFilename=configFilename)
         self.loadDrakeModelFromFilename()
+        self.initializeRobotPoseTranslator()
         self.initializeConstants()
         self.initializeDebugInfo()
 
@@ -76,11 +78,14 @@ class ContactFilter(object):
 
         self.residual = None
         self.particleSetList = []
+
+        # this should really be part of the state
         self.eventTimes = {'lastContactAdded': 0, 'lastContactRemoved': 0} # should be in simulator time
         self.removedParticleSet = False
         self.mostLikelySolnData = None
 
         self.initializeTestTimers()
+        self.initializeContactFilterState()
 
 
         # self.addTestParticleSetToParticleSetList()
@@ -127,7 +132,6 @@ class ContactFilter(object):
     def initializeDebugInfo(self):
         # debugging info
         self.debugInfo = {}
-        self.debugInfo['maxNumParticleSets'] = 4
         self.debugInfo['forceThreshold'] = 1.0
         self.debugInfo['numQPSolves'] = 0
         self.debugInfo['totalQPSolveTime'] = 0.0
@@ -155,56 +159,6 @@ class ContactFilter(object):
         self.options = yaml.load(stream)
 
 
-        # scale some stuff
-        self.options['thresholds']['addContactPointSquaredError'] = self.options['thresholds']['addContactPointSquaredError'] * 0.05/self.options['measurementModel']['var']
-        self.options['thresholds']['squaredErrorBoundForMostLikelyParticleAveraging'] = self.options['thresholds']['squaredErrorBoundForMostLikelyParticleAveraging'] *\
-                                                                                        0.05/self.options['measurementModel']['var']
-
-        #
-        # self.options['thresholds'] = {}
-        # self.options['thresholds']['addContactPointTimeout'] = 0.25
-        # self.options['thresholds']['removeContactPointTimeout'] = 0.25
-        # self.options['thresholds']['addContactPointSquaredError'] = 20.0 # threshold on squared error to add contact point
-        # self.options['thresholds']['removeContactPointSquaredError'] = 20.0
-        # self.options['thresholds']['removeContactPointForce'] = 5.0 # DEPRECATED . . .
-        # self.options['thresholds']['squaredErrorBoundForMostLikelyParticleAveraging'] = 10.0
-        # self.options['thresholds']['lastTimeBelowThreshold'] = -1e3; # start this out very negative
-        # self.options['thresholds']['timeAboveThresholdToAddParticleSet'] = 0.1
-        #
-        #
-        # # sensitive params
-        # if False:
-        #     self.options['thresholds']['addContactPointSquaredError'] = 10.0 # threshold on squared error to add contact point
-        #     self.options['thresholds']['removeContactPointSquaredError'] = 10.0
-        #     self.options['thresholds']['timeAboveThresholdToAddParticleSet'] = 0.01
-        #
-        # self.options['motionModel'] = {}
-        # self.options['motionModel']['var'] = 0.05
-        # self.options['motionModel']['varMin'] = 0.01
-        # self.options['motionModel']['varMax'] = 0.05
-        # self.options['motionModel']['varMaxSquaredErrorCutoff'] = 10
-        #
-        # self.options['measurementModel'] = {}
-        # self.options['measurementModel']['var'] = 0.05 # this is totally made up at the moment
-
-        #
-        # self.options['numParticles'] = 100
-        #
-        #
-        # self.options['debug'] = {}
-        #
-        # ## WARNING: this options uses the true residual rather than estimated residual
-        # self.options['debug']['useTrueResidual'] = False
-        # self.options['debug']['maxNumParticleSets'] = 4
-        #
-        # self.options['noise'] = {}
-        # self.options['noise']['addNoise'] = False
-        # self.options['noise']['stddev'] = 0.2
-        #
-        # self.options['vis'] = {}
-        # self.options['vis']['draw'] = False
-        # self.options['vis']['publishVisualizationData'] = True
-
 
     def initializeTestTimers(self):
         self.justAppliedMotionModel = False
@@ -212,38 +166,13 @@ class ContactFilter(object):
         self.particleFilterTestTimer.callback = self.testFullParticleFilterCallback
 
 
-    # DEPRECATED
-    # def initializeCellLocator(self):
-    #
-    #     # for now use the zero pose to build the cell locator
-    #     # later we can use something better like the safe nominal pose
-    #     self.locatorData = {}
-    #     polyData = vtk.vtkPolyData()
-    #     self.robotStateModel.model.getModelMeshWithLinkInfoAndNormals(polyData)
-    #     self.locatorData['polyData'] = polyData
-    #     self.locatorData['linkIdArray'] = polyData.GetCellData().GetArray("linkId")
-    #     self.locatorData['normals'] = polyData.GetCellData().GetNormals()
-    #     self.locatorData['linkFrames'] = {}
-    #
-    #     linkNames = self.robotStateModel.model.getLinkNames()
-    #
-    #     for linkName in linkNames:
-    #         linkName = str(linkName)
-    #         linkFrame = vtk.vtkTransform()
-    #         linkFrame.DeepCopy(self.linkFrameContainer.getLinkFrame(linkName))
-    #         self.locatorData['linkFrames'][linkName] = linkFrame
-    #
-    #     loc = vtk.vtkCellLocator()
-    #     loc.SetDataSet(polyData)
-    #     loc.BuildLocator()
-    #     self.locatorData['locator'] = loc
-    #
-
-
     def initializeContactPointLocator(self):
         self.contactPointLocator = contactpointlocator.ContactPointLocator(self.robotStateModel,
                                                                            self.linkFrameContainer,
                                                                            self.options['data']['contactCells'])
+
+    def initializeRobotPoseTranslator(self):
+        self.robotPoseTranslator = cfUtils.RobotPoseTranslator(self.robotStateModel.model, self.drakeModel.model)
 
     def initializeColorsForParticleSets(self):
         colorList = []
@@ -254,6 +183,13 @@ class ContactFilter(object):
         colorList.append([0.13,0.7,0.66]) # blue-green
 
         self.colorForParticleSets = itertools.cycle(colorList)
+
+    def initializeContactFilterState(self):
+        initialState = dict()
+        initialState['lastTimeBelowAddContactPointThreshold'] = -1
+
+        self.state = cfUtils.createNamedTupleFromDict(initialState, name='State')
+
 
 
     def addTestParticleSetToParticleSetList(self):
@@ -364,7 +300,7 @@ class ContactFilter(object):
             # default pose of zeros where we can run doKinematics to figure out
             # the distances between the different cfp's for use in the motion model
             q = np.zeros(self.drakeModel.numJoints)
-            self.drakeModel.model.doKinematics(q, 0*q, False, False)
+            self.drakeModel.model.setJointPositions(q)
 
             # compute location, in world frame of all
             worldPosition = {}
@@ -502,7 +438,7 @@ class ContactFilter(object):
 
 
         q = self.getCurrentPose()
-        self.drakeModel.model.doKinematics(q, 0*q, False, False)
+        self.drakeModel.model.setJointPositions(q)
 
         startTime = time.time()
         # this stores the current measurement update information
@@ -540,7 +476,7 @@ class ContactFilter(object):
 
         # be careful here, this doKinematics call could be the slow thing? But hopefully not because
         # this call is ultimately getting pushed through to c++
-        self.drakeModel.model.doKinematics(q, 0*q, False, False)
+        self.drakeModel.model.setJointPositions(q)
         # be smart about it, see if we have already computed the QP for a particle with the same cfp!!!
 
         alreadySolved = {} # should be a dict with ContactFilterPoint as key, solnData as key
@@ -640,29 +576,47 @@ class ContactFilter(object):
             self.singleMeasurementUpdateForParticleSetRemoval(residual, particleSet)
 
 
-    def checkTimeoutForSetAdditionRemoval(self):
+    def checkTimeoutForSetAddition(self):
 
         val = True
 
-        if (self.currentTime - self.eventTimes['lastContactRemoved']) < self.options['thresholds']['removeContactPointTimeout']:
-            val = False
-
+        # Don't add a particle set if one has already been added recently
         if (self.currentTime - self.eventTimes['lastContactAdded']) < self.options['thresholds']['addContactPointTimeout']:
             val = False
 
+        # we should be above the addContactPointSquaredError threshold for a given amount of
+        # time before we add a new particle set. This is to avoid incorrectly adding a new particle set
+        if ((self.currentTime - self.state.lastTimeBelowAddContactPointThreshold)
+                < self.options['thresholds']['timeAboveThresholdToAddParticleSet']):
+            val = False
+
         return val
+
+    def checkTimeoutForSetRemoval(self):
+        val = True
+
+        # don't remove a particle set if one has been removed recently
+        if (self.currentTime - self.eventTimes['lastContactRemoved']) < self.options['thresholds']['removeContactPointTimeout']:
+            val = False
+
+        return val
+
+    # solnData is the solution data for the current measurement update step
+    def updateLastTimeBelowAddParticleThreshold(self, solnData):
+        if (solnData['squaredError'] < self.options['thresholds']['addContactPointSquaredError']):
+            self.state.lastTimeBelowAddContactPointThreshold = self.currentTime
+
 
     def manageParticleSets(self, verbose=True):
 
         # solve the QP's that are necessary for particle set removal
         self.measurementUpdateForParticleSetRemoval(self.residual)
-
-
         solnData = self.mostLikelySolnData
+
         newParticleSet = None
         linksWithContactPoints = set()
 
-        timeoutSatisfied = self.checkTimeoutForSetAdditionRemoval()
+
         wantToAddNewParticleSet = False
 
         # this means there are no particle sets at the moment
@@ -673,6 +627,7 @@ class ContactFilter(object):
 
         # this means there is at least one particle set, so we can use solnData['squaredError']
         else:
+            self.updateLastTimeBelowAddParticleThreshold(solnData)
             # add a new particle set if the squared error is large
             if (solnData['squaredError'] > self.options['thresholds']['addContactPointSquaredError']):
                 wantToAddNewParticleSet = True
@@ -680,12 +635,15 @@ class ContactFilter(object):
                     cfp = d['ContactFilterPoint']
                     linksWithContactPoints.add(cfp.linkName)
 
+        # check if all timeouts are satisfied
+        addParticleSetTimeoutSatisfied = self.checkTimeoutForSetAddition()
+        removeParticleSetTimeoutSatisfied = self.checkTimeoutForSetRemoval()
 
         # this means we have encountered a situation where we should add a new particle set
         # for now will only add one if a sufficient time has passed since we last added a contact (this logic is above)
         if wantToAddNewParticleSet:
-            if timeoutSatisfied:
-                if len(self.particleSetList) >= self.debugInfo['maxNumParticleSets']:
+            if addParticleSetTimeoutSatisfied:
+                if len(self.particleSetList) >= self.options['debug']['maxNumParticleSets']:
                     if verbose:
                         print "reached max num particle sets"
                         return
@@ -720,7 +678,7 @@ class ContactFilter(object):
             squaredErrorWithoutParticle = particleSet.squaredErrorWithoutParticle
             for particle, squaredError in squaredErrorWithoutParticle.iteritems():
                 if squaredError < self.options['thresholds']['removeContactPointSquaredError']:
-                    if timeoutSatisfied:
+                    if removeParticleSetTimeoutSatisfied:
                         if verbose:
                             print "removing particle didn't have adverse affect on estimation, REMOVING particle set"
                         particleSetToRemove = particle.containingParticleSet
@@ -1038,7 +996,7 @@ class ContactFilter(object):
     #
     #     # need to call doKinematics before we can use geometricJacobian
     #     q = self.getCurrentPose()
-    #     self.drakeModel.model.doKinematics(q, 0*q, False, False)
+    #     self.drakeModel.model.setJointPositions(q)
     #
     #     for idx, linkName in enumerate(msg.body_names):
     #         linkName = str(linkName)
@@ -1081,7 +1039,6 @@ class ContactFilter(object):
         return contactLocationInWorld
 
     def publishEstimate(self, solnData):
-
 
         if solnData is None:
             msg = robotlocomotion_lcmtypes.contact_filter_estimate_t()
@@ -1139,8 +1096,12 @@ class ContactFilter(object):
         return msg
 
 
+    # be careful here if director and this use different models
+    # for example if we are FIXED base and director has ROLLPITCHYAW
     def getCurrentPose(self):
-        return self.robotStateJointController.q
+        q_director = self.robotStateJointController.q
+        q = self.robotPoseTranslator.translateDirectorPoseToRobotPose(q_director)
+        return q
 
     def onResidualObserverState(self, msg):
         self.setCurrentUtime(msg.utime)
@@ -1422,7 +1383,7 @@ class ContactFilter(object):
         residual = np.zeros(self.drakeModel.numJoints)
         # since we aren't calling it via computeLikelihoodFull we need to manually call doKinematics
         q = self.getCurrentPose()
-        self.drakeModel.model.doKinematics(q, 0*q, False, False)
+        self.drakeModel.model.setJointPositions(q)
         solnData = self.computeSingleLikelihood(residual, cfpList)
 
         return solnData
@@ -1654,32 +1615,11 @@ class ContactFilter(object):
         self.testCFP = self.contactFilterPointDict['l_uarm'][0]
 
 
-    # DEPRECATED: THIS LIVES IN CONTACTPOINTLOCATOR CLASS NOW
-    # def findClosestPoint(self, point):
-    #     cell = vtk.vtkGenericCell()
-    #     cellId = vtk.mutable(0)
-    #     subId = vtk.mutable(0)
-    #     dist2 = vtk.mutable(0)
-    #     closestPoint = [0.0, 0.0, 0.0]
-    #     self.locatorData['locator'].FindClosestPoint(point, closestPoint, cellId, subId, dist2)
-    #     linkId = int(self.locatorData['linkIdArray'].GetTuple(cellId)[0])
-    #     linkName = self.robotStateModel.model.getBodyOrFrameName(linkId)
-    #
-    #
-    #     # NOTE: I AM PUTTING A NEGATIVE SIGN HERE AS A TEMPORARY HACK
-    #     normal = -np.array(self.locatorData['normals'].GetTuple(cellId))
-    #
-    #     closestPointData = {'closestPoint': closestPoint, 'linkName': linkName, 'normal': normal, 'dist': dist2}
-    #     return closestPointData
-
     def motionModelSingleCFP(self, cfp, visualize=False, tangentSampling=False):
 
         linkToWorld = self.linkFrameContainer.getLinkFrame(cfp.linkName)
         contactLocationWorldFrame = linkToWorld.TransformPoint(cfp.contactLocation)
-
         contactNormalWorldFrame = linkToWorld.TransformVector(cfp.contactNormal)
-        tangentVector = np.cross(cfp.contactNormal, contactNormalWorldFrame)
-        tangentVector = tangentVector/np.linalg.norm(tangentVector)
 
 
         variance = self.options['motionModel']['varMax']
@@ -1689,6 +1629,8 @@ class ContactFilter(object):
             variance = alpha*self.options['motionModel']['varMax'] + (1-alpha)*self.options['motionModel']['varMin']
 
         if tangentSampling:
+            # the tangent vector should just be something orthogonal to it
+            tangentVector = cfUtils.getPerpendicularVector(contactNormalWorldFrame)
             deltaToNewContactLocation = tangentVector*np.random.normal(scale=variance, size=1)
         else:
             # deltaToNewContactLocation = np.random.normal(scale=variance, size=3)

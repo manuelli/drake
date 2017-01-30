@@ -1,9 +1,7 @@
 from director import mainwindowapp
 from director import robotsystem
 from director import applogic
-from director import lcmUtils
-from PythonQt import QtGui, QtCore
-import drake as lcmdrake
+
 
 import contactfilter
 

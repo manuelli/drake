@@ -78,7 +78,8 @@ class PythonDrakeModel(object):
         return data
 
 
-    # make sure you call doKinematics before you get here!
+    # make sure you call setJointPositions(q) on the ddDrakeModel BEFORE you
+    # call this method
     def geometricJacobian(self, base_body_or_frame_ind, end_effector_body_or_frame_id,
                           expressed_in_body_or_frame_ind, gradient_order, in_terms_of_qdot=False):
 

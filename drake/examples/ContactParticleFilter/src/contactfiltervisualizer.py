@@ -1,33 +1,15 @@
-
 __author__ = 'manuelli'
-import contactfilter
-from contactfilter import ContactFilter
 
-
-__author__ = 'manuelli'
-import director
-from director import roboturdf
 import numpy as np
-import director.vtkAll as vtk
-import PythonQt
-import matplotlib.pyplot as plt
-import Queue
-import collections
 import yaml
 import os
 
 import contactfilterutils as cfUtils
-
-
-from PythonQt import QtCore, QtGui
-from director import transformUtils
+from contactfilter import ContactFilter
 from director import lcmUtils
-
 from director.debugVis import DebugData
 from director import visualization as vis
-
 from director import objectmodel as om
-
 import robotlocomotion as robotlocomotion_lcmtypes
 
 
@@ -175,7 +157,7 @@ class ContactFilterVisualizer(object):
 
 
         # load the options from the config file
-        drcBase = os.getenv("DRC_BASE")
-        fullFileName = drcBase+'/software/control/residual_detector/config/' + configFilename
+        drake_source_dir = os.getenv("DRAKE_SOURCE_DIR")
+        fullFileName = drake_source_dir +'/drake/examples/ContactParticleFilter/config/' + configFilename
         stream = file(fullFileName)
         self.options = yaml.load(stream)
