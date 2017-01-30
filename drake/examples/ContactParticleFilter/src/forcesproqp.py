@@ -79,8 +79,7 @@ class ForcesProQP:
 
         # generate the actual code
         # store it in the bin directory
-        drcBase = os.getenv('DRC_BASE')
-        pathToCPFBin = drcBase + '/software/control/residual_detector/python/bin'
+        pathToCPFBin = os.getenv('DRAKE_SOURCE_DIR') + '/drake/examples/ContactParticleFilter/bin/'
         os.chdir(pathToCPFBin)
         stages.generateCode(get_userid.userid)
 

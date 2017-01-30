@@ -736,13 +736,13 @@ class ExternalForce(object):
             print key
 
     def saveForceLocationsToFile(self, filename=None, verbose=False, overwrite=False):
+
         if filename is None:
-            filename = "testDirector.csv"
+            filename = self.options['data']['initialParticleLocations']
 
+        fullFilePath = os.getenv('DRAKE_SOURCE_DIR') + filename
 
-        robotType = drcargs.getGlobalArgParser().getRobotType()
-        drcBase = os.getenv('DRC_BASE')
-        fullFilePath = drcBase + "/software/director/src/python/data/contactparticlefilter/" + robotType + "/" + filename
+        print "saving initial particle locations to ", filename
 
         if os.path.isfile(fullFilePath) and not overwrite:
             print "FILE ALREADY EXISTS, set the overwrite flag to true to overwrite"

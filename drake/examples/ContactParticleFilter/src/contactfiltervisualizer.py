@@ -47,7 +47,7 @@ class ContactFilterVisualizer(object):
         self.visualize = False
 
     def addSubscribers(self):
-        subscriber = lcmUtils.addSubscriber("CONTACT_PARTICLE_FILTER_DATA", lcmdrc.CPF_data_t, self.onContactFilterMsg)
+        subscriber = lcmUtils.addSubscriber("CONTACT_PARTICLE_FILTER_DATA", robotlocomotion_lcmtypes.CPF_data_t, self.onContactFilterMsg)
         subscriber.setSpeedLimit(3)
 
     def getCurrentPose(self):

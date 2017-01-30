@@ -21,23 +21,15 @@ except ImportError:
 
 class ContactPointLocator(object):
 
-    def __init__(self, robotStateModel, linkFrameContainer):
+    def __init__(self, robotStateModel, linkFrameContainer, contact_cells_filename):
         self.robotStateModel = robotStateModel
         self.linkFrameContainer = linkFrameContainer
-        self.loadCellsFromFile()
+        self.loadCellsFromFile(contact_cells_filename)
 
 
-    def loadCellsFromFile(self, filename=None):
-        if filename is None:
-            filename = "wholeBody"
-
-        drcBase = os.getenv('DRC_BASE')
-        robotType = drcargs.getGlobalArgParser().getRobotType()
-        fullFilename = drcBase + "/software/control/residual_detector/python/data/contactparticlefilter/" + \
-                       robotType + "/" + filename + ".out"
-
-        print "filename is ", fullFilename
-
+    # filename is relative path from DRAKE_SOURCE_DIR
+    def loadCellsFromFile(self, filename):
+        fullFilename = os.getenv('DRAKE_SOURCE_DIR') + filename
         dataDict = ioUtils.readDataFromFile(fullFilename)
         self.createCellLocators(dataDict=dataDict)
 

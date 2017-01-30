@@ -175,8 +175,19 @@ class LinkWidget(object):
         self.linkDict[linkName]['colorCodeArray'].SetValue(cellId, 2)
         self.linkDict[linkName]['colorCodeArray'].Modified()
 
-    def addCurrentCellsToCapture(self):
-        pass
+    def captureAllCells(self):
+        for linkName, data in self.linkDict.iteritems():
+            colorCodeArray = data['colorCodeArray']
+
+            colorCodeNumpy = numpy_support.vtk_to_numpy(data['colorCodeArray'])
+            colorCodeNumpy.fill(1)
+            data['colorCodeArray'].Modified()
+
+    def provisionallyCaptureAllCellsOnLink(self, linkName):
+        data = self.linkDict[linkName]
+        colorCodeNumpy = numpy_support.vtk_to_numpy(data['colorCodeArray'])
+        colorCodeNumpy.fill(2)
+        data['colorCodeArray'].Modified()
 
 
     def captureProvisionalCells(self):
@@ -203,13 +214,9 @@ class LinkWidget(object):
     def saveCapturedCellsToFile(self, filename=None, overwrite=False):
 
         if filename is None:
-            filename = "capturedCells"
+            filename = self.externalForce.options['data']['contactCells']
 
-        drcBase = os.getenv('DRC_BASE')
-        robotType = drcargs.getGlobalArgParser().getRobotType()
-        fullFilename = drcBase + "/software/control/residual_detector/python/data/contactparticlefilter/" + \
-                       robotType + "/" + filename + ".out"
-
+        fullFilename = os.getenv('DRAKE_SOURCE_DIR') + filename
 
         dataDict = {}
         for linkName, data in self.linkDict.iteritems():
