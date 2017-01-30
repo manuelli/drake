@@ -1,4 +1,5 @@
 __author__ = 'manuelli'
+
 import os
 import sys
 DRAKE_SOURCE_DIR = os.getenv('DRAKE_SOURCE_DIR')

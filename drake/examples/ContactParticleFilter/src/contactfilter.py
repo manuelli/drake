@@ -15,11 +15,9 @@ import sys
 import yaml
 import cProfile
 import pstats
-from enum import Enum
 
 
 # director imports
-from PythonQt import QtCore, QtGui
 from director import transformUtils
 from director import lcmUtils
 from director.debugVis import DebugData
@@ -27,12 +25,10 @@ from director import visualization as vis
 import director.vtkAll as vtk
 from director.timercallback import TimerCallback
 from director import objectmodel as om
-from director import drcargs
 
 
 #CPF imports
 import robotlocomotion as robotlocomotion_lcmtypes
-import drake as lcmdrake
 import contactpointlocator
 import contactfilterutils as cfUtils
 import contactfiltergurobi
@@ -55,9 +51,9 @@ class ContactFilter(object):
 
         self.robotStateJointController = robotStateJointController
         self.robotStateModel = robotStateModel
-        self.initializeConstants()
-        self.loadDrakeModelFromFilename()
         self.initializeOptions(configFilename=configFilename)
+        self.loadDrakeModelFromFilename()
+        self.initializeConstants()
         self.initializeDebugInfo()
 
         self.linkFrameContainer = LinkFrameContainer(robotStateModel)
@@ -126,6 +122,8 @@ class ContactFilter(object):
                                       [0,0,mu,-mu],
                                       [1,1,1,1]])
 
+        self.weightMatrix = np.eye(self.drakeModel.numJoints)
+
     def initializeDebugInfo(self):
         # debugging info
         self.debugInfo = {}
@@ -151,12 +149,10 @@ class ContactFilter(object):
 
 
         # load the options from the config file
-        drcBase = os.getenv("DRC_BASE")
-        fullFileName = drcBase+'/software/control/residual_detector/config/' + configFilename
+        drake_source_dir = os.getenv("DRAKE_SOURCE_DIR")
+        fullFileName = drake_source_dir +'/drake/examples/ContactParticleFilter/config/' + configFilename
         stream = file(fullFileName)
         self.options = yaml.load(stream)
-
-        self.weightMatrix = np.eye(self.drakeModel.numJoints)
 
 
         # scale some stuff
@@ -245,8 +241,9 @@ class ContactFilter(object):
 
 
     def initializeContactPointLocator(self):
-        self.contactPointLocator = contactpointlocator.ContactPointLocator(self.robotStateModel, self.linkFrameContainer)
-        self.contactPointLocator.loadCellsFromFile()
+        self.contactPointLocator = contactpointlocator.ContactPointLocator(self.robotStateModel,
+                                                                           self.linkFrameContainer,
+                                                                           self.options['data']['contactCells'])
 
     def initializeColorsForParticleSets(self):
         colorList = []
@@ -265,8 +262,9 @@ class ContactFilter(object):
 
     def loadDrakeModelFromFilename(self, filename=None):
         print "loading drake model . . . "
-        self.drakeModel = PythonDrakeModel()
-        self.drakeModel.loadRobotModelFromURDFFilename(None, filename)
+        self.drakeModel = PythonDrakeModel(self.options['robot']['floatingBaseType'],
+                                           self.options['robot']['urdf'])
+
 
 
     def squaredErrorNoContacts(self, verbose=True, residual=None):
@@ -288,10 +286,9 @@ class ContactFilter(object):
 
     def loadContactFilterPointsFromFile(self, filename=None):
         if filename is None:
-            filename = "directorDense.csv"
+            filename = self.options['data']['initialParticleLocations']
 
-        drcBase = os.getenv('DRC_BASE')
-        fullFilePath = drcBase + "/software/control/residual_detector/src/particle_grids/" + filename
+        fullFilePath = os.getenv('DRAKE_SOURCE_DIR') + filename
         fileObject = open(fullFilePath, 'r')
 
         reader = csv.reader(fileObject)
