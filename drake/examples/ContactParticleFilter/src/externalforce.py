@@ -30,6 +30,7 @@ from director import drcargs
 from director import utime as utimeUtil
 from pythondrakemodel import PythonDrakeModel
 from twostepestimator import TwoStepEstimator
+import contactfilterutils as cfUtils
 
 Wrench_Time = namedtuple('wrenchTime', ['wrench','time'])
 class ExternalForce(object):
@@ -41,6 +42,7 @@ class ExternalForce(object):
         self.initializeOptions(configFilename)
 
         self.loadDrakeModelFromFilename()
+        self.initializeRobotPoseTranslator()
         self.initializeJointNamesList()
 
         # keys = linkNames, wrench = 6 x 1 Torque-Force vector, all in body frame
@@ -152,6 +154,9 @@ class ExternalForce(object):
             jointNames.append(str(val))
 
         self.jointNames = jointNames
+
+    def initializeRobotPoseTranslator(self):
+        self.robotPoseTranslator = cfUtils.RobotPoseTranslator(self.robotSystem.robotStateModel.model, self.drakeModel.model)
 
     # linkName is a string, wrench is an np.array
     def addForce(self, linkName, wrench=None, forceDirection=None, forceMagnitude=None, forceLocation=None, inWorldFrame=False):
@@ -278,8 +283,12 @@ class ExternalForce(object):
             del self.visObjectDrawTime[key]
 
 
+    # be careful here if director and this use different models
+    # for example if we are FIXED base and director has ROLLPITCHYAW
     def getCurrentPose(self):
-        return self.robotSystem.robotStateJointController.q
+        q_director = self.robotSystem.robotStateJointController.q
+        q =self.robotPoseTranslator.translateDirectorPoseToRobotPose(q_director)
+        return q
 
     def publish(self):
 
@@ -296,7 +305,7 @@ class ExternalForce(object):
         # make sure we call doKinematics before we do all the geometricJacobian stuff
         if self.options['debug']['publishTrueResidual']:
             q = self.getCurrentPose()
-            self.drakeModel.model.doKinematics(q, 0*q, False, False)
+            self.drakeModel.model.setJointPositions(q)
 
             # alternatively can just do setJointPositions
             # self.drakeModel.model.setJointPositions(q)
@@ -594,143 +603,6 @@ class ExternalForce(object):
         return self.twoStepEstimator.computeTwoStepEstimate(residual, linksWithContactForce)
 
 
-    # DEPRECATED: now lives in twostepestimator.py
-    #############
-    # these methods deal with computing contact force and location
-    # # uses the linkMeshData to do the intersection
-    # def computeContactLocation(self, linkName, force, torque):
-    #     # want to find contactPoint such that force applied at contactPoint
-    #     # leads to given torque, i.e. we want to solve for contactPoint such that
-    #     # torque = contactPoint x force, where x denotes the cross product. This is
-    #     # the same as solving torque = -force x contactPoint = -forceCross * contactPoint
-    #
-    #     # everything here is in link frame
-    #     forceCross = transformUtils.crossProductMatrix(force)
-    #     forceCrossPseudoInverse = np.linalg.pinv(forceCross)
-    #     contactPoint_d = -np.dot(forceCrossPseudoInverse, torque)
-    #
-    #     forceNorm = np.linalg.norm(force)
-    #     if forceNorm < 0.5:
-    #         return None
-    #
-    #     forceNormalized = force/forceNorm
-    #
-    #
-    #     # now intersect line with linkMesh, choose the start and end of the ray
-    #     # so that we find a contact point where the force is pointing "into" the link
-    #     # mesh
-    #     rayOrigin = contactPoint_d - 0.5*forceNormalized
-    #     rayEnd = contactPoint_d + 0.5*forceNormalized
-    #
-    #     ############# DEBUGGING
-    #     # print ""
-    #     # print "force", force
-    #     # print "torque", torque
-    #     # print "r_d", contactPoint_d
-    #     # impliedTorque = np.cross(contactPoint_d, force)
-    #     # print "implied torque", impliedTorque
-    #     if self.showContactRay:
-    #         linkToWorld = self.robotStateModel.getLinkFrame(linkName)
-    #         rayOriginInWorld = np.array(linkToWorld.TransformPoint(rayOrigin))
-    #         rayEndInWorld = np.array(linkToWorld.TransformPoint(rayEnd))
-    #         d = DebugData()
-    #         d.addLine(rayOriginInWorld, rayEndInWorld, radius=0.005)
-    #         color=[1,1,0]
-    #         name = linkName + " contact ray world frame"
-    #         obj = vis.updatePolyData(d.getPolyData(), name, color=color)
-    #         self.visObjectDrawTime[name] = time.time()
-    #     ################## DEBUGGING
-    #
-    #
-    #     pt = self.raycastAgainstLinkMesh(linkName, rayOrigin, rayEnd)
-    #
-    #
-    #     # if pt is None:
-    #     #     print ""
-    #     #     print "no intersection found on " + linkName
-    #     #     print ""
-    #
-    #     return pt
-    #
-    #
-    #     # if we found a contact point, then draw the force
-    #
-    #
-    #     # rayOrigin and rayEnd should be in link frame
-    #     # the method transforms them to the correct world frame for the mesh
-    # def raycastAgainstLinkMesh(self, linkName, rayOrigin, rayEnd):
-    #     meshToWorld = self.linkMeshData[linkName]['transform']
-    #     rayOriginInWorld = np.array(meshToWorld.TransformPoint(rayOrigin))
-    #     rayEndInWorld = np.array(meshToWorld.TransformPoint(rayEnd))
-    #
-    #     # ### DEBUGGING
-    #     # if self.showContactRay:
-    #     #     d = DebugData()
-    #     #     d.addLine(rayOriginInWorld, rayEndInWorld, radius=0.005)
-    #     #     color=[1,0,0]
-    #     #     obj = vis.updatePolyData(d.getPolyData(), "raycast ray in mesh frame", color=color)
-    #
-    #     tolerance = 0.0 # intersection tolerance
-    #     pt = [0.0, 0.0, 0.0] # data coordinate where intersection occurs
-    #     lineT = vtk.mutable(0.0) # parametric distance along line segment where intersection occurs
-    #     pcoords = [0.0, 0.0, 0.0] # parametric location within cell (triangle) where intersection occurs
-    #     subId = vtk.mutable(0) # sub id of cell intersection
-    #
-    #     result = self.linkMeshData[linkName]['locator'].IntersectWithLine(rayOriginInWorld, rayEndInWorld, tolerance, lineT, pt, pcoords, subId)
-    #
-    #     # this means we didn't find an intersection
-    #     if not result:
-    #         return None
-    #
-    #     # otherwise we need to transform it back to linkFrame
-    #     worldToMesh = meshToWorld.GetLinearInverse()
-    #     ptInLinkFrame = worldToMesh.TransformPoint(pt)
-    #     return ptInLinkFrame
-    #
-    #
-    # def onActiveLinkContactEstimate(self, msg):
-    #
-    #
-    #     if not self.showActiveLinkEstimate:
-    #         return
-    #
-    #     numBodies = msg.num_bodies
-    #
-    #     for i in xrange(0,numBodies):
-    #         linkName = msg.body_name[i]
-    #         fx = msg.fx[i]
-    #         fy = msg.fy[i]
-    #         fz = msg.fz[i]
-    #         tx = msg.tx[i]
-    #         ty = msg.ty[i]
-    #         tz = msg.tz[i]
-    #
-    #         name = linkName + " active link estimated external force"
-    #         force = np.array([fx, fy, fz])
-    #         torque = np.array([tx, ty, tz])
-    #
-    #         eps = 0.5
-    #         if np.linalg.norm(force) < eps:
-    #             om.removeFromObjectModel(om.findObjectByName(name))
-    #             return
-    #
-    #         # add noise if it was called for
-    #         if self.options['noise']['addNoise']:
-    #             force += np.random.normal(scale=self.options['noise']['stddev'], size=3)
-    #             torque += np.random.normal(scale=self.options['noise']['stddev'], size=3)
-    #
-    #
-    #         forceLocation = self.computeContactLocation(linkName, force, torque)
-    #         # print "forceLocation", forceLocation
-    #
-    #
-    #         if forceLocation is None:
-    #             continue
-    #
-    #         self.drawForce(name, linkName, forceLocation, force, color=[1,0,0])
-    #         self.visObjectDrawTime[name] = time.time()
-
-    
     def printForces(self):
         for key in self.externalForces.keys():
             print key

@@ -124,7 +124,7 @@ class LinkWidget(object):
             print ""
             forceDirection = -np.array(normal)
             forceLocation = np.array(pickedPoint)
-            self.externalForce.addForce(linkName, forceDirection=forceDirection, forceLocation=forceLocation, forceMagnitude=10.0, inWorldFrame=True)
+            self.externalForce.addForce(linkName, forceDirection=forceDirection, forceLocation=forceLocation, forceMagnitude=20.0, inWorldFrame=True)
 
 
     def startCellCaptureMode(self):

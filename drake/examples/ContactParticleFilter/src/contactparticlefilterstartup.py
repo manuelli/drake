@@ -1,7 +1,8 @@
 __author__ = 'manuelli'
 
 import contactfilter
-# import contactfiltervisualizer
+import contactfiltervisualizer
+from contactfilterutils import EstRobotStatePublisher
 import externalforce
 import linkselection
 # import cpftester
@@ -17,15 +18,18 @@ def startup(robotSystem, globalsDict=None):
 
     externalForce = externalforce.ExternalForce(rs)
     contactFilter = contactfilter.ContactFilter(rs.robotStateModel, rs.robotStateJointController)
-    # contactFilterVisualizer = contactfiltervisualizer.ContactFilterVisualizer(rs, rs.robotStateModel)
+    contactFilterVisualizer = contactfiltervisualizer.ContactFilterVisualizer(rs, rs.robotStateModel)
     linkSelection = linkselection.LinkWidget(rs.view, rs.robotStateModel, externalForce)
     linkSelection.start()
+
+    estRobotStatePublisher = EstRobotStatePublisher(robotSystem)
 
     if globalsDict is not None:
         globalsDict['externalForce'] = externalForce
         globalsDict['contactFilter'] = contactFilter
-        # globalsDict['contactFilterVisualizer'] = contactFilterVisualizer
+        globalsDict['contactFilterVisualizer'] = contactFilterVisualizer
         globalsDict['linkSelection'] = linkSelection
+        globalsDict['estRobotStatePublisher'] = estRobotStatePublisher
 
         # globalsDict['cf'] = contactFilter
         # globalsDict['ef'] = externalForce
