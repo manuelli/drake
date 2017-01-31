@@ -22,7 +22,9 @@ namespace ContactParticleFilter{
   }
 
 
-  KukaIIWAStatusToResidual::KukaIIWAStatusToResidual(KukaIIWAStatusResidualConfig config):config_(config){}
+  KukaIIWAStatusToResidual::KukaIIWAStatusToResidual(KukaIIWAStatusResidualConfig config):config_(config){
+    this->SetupSubscribers();
+  }
 
   void KukaIIWAStatusToResidual::SetupSubscribers() {
     this->lcm_handler_.LCMHandle->subscribe(config_.receive_channel, &KukaIIWAStatusToResidual::onIIWAStatus, this);
@@ -38,9 +40,10 @@ namespace ContactParticleFilter{
     this->state_.residual = Eigen::VectorXd::Zero(this->num_joints_);
 
     std::string iiwa_joint_name_prefix = "iiwa_joint_";
-    // convention is 1-indexing
-    for(int i=1; i<num_joints_+1; i++){
-      this->joint_names_[i] = iiwa_joint_name_prefix + std::to_string(i);
+
+    for(int i=0; i<num_joints_; i++){
+      // naming convention starts at 1
+      this->joint_names_[i] = iiwa_joint_name_prefix + std::to_string(i+1);
     }
 
     this->initialized_ = true;
@@ -63,19 +66,25 @@ namespace ContactParticleFilter{
     for(int i=0; i<num_joints_; i++){
       this->state_.residual(i) = this->state_.last_msg.joint_torque_external[i];
     }
+
+    this->PublishResidual();
   }
 
   void KukaIIWAStatusToResidual::PublishResidual() {
     robotlocomotion::residual_observer_state_t msg;
     msg.utime = this->state_.last_msg.utime;
+    msg.num_joints = (int16_t) num_joints_;
+    msg.joint_name = this->joint_names_;
     msg.residual.resize(num_joints_);
     msg.gravity.resize(num_joints_);
     msg.internal_torque.resize(num_joints_);
     msg.foot_contact_torque.resize(num_joints_);
 
+
     for(int i=0; i<num_joints_; i++){
-      msg.residual[i] = this->state_.residual(i);
+      msg.residual[i] = (float) this->state_.residual(i);
     }
+
 
     this->lcm_.publish(this->config_.publish_channel, &msg);
   }
