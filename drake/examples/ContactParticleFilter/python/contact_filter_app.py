@@ -1,7 +1,7 @@
 from director import mainwindowapp
 from director import robotsystem
 from director import applogic
-
+from director import consoleapp
 
 import contactfilter
 
@@ -28,4 +28,9 @@ applogic.resetCamera(viewDirection=[-1,0,0], view=app.view)
 contactFilter = contactfilter.ContactFilter(robotSystem.robotStateModel, robotSystem.robotStateJointController)
 contactFilter.start()
 
-app.app.start()
+# toggle show/hide of window
+showWindow = False
+if showWindow:
+    app.app.start()
+else:
+    consoleapp.ConsoleApp.start()

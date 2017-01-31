@@ -13,6 +13,9 @@ import os
 
 
 def startup(robotSystem, globalsDict=None):
+    """"
+    Creates classes relevant for the contact particle filter.
+    """
     print "setting up the contact particle filter . . . "
     rs = robotSystem
 

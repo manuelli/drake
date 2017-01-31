@@ -38,9 +38,9 @@ numParticles: 50
 
 debug:
   publishTrueResidual: True
-  useTrueResidual: True
-  maxNumParticleSets: 1
-  forceThreshold: 1.0
+  useTrueResidual: False
+  maxNumParticleSets: 0
+  forceThreshold: 1.0 # deprecated: not sure what this actually gets used for . . .
   
 # note this noise is not added to true residual published by externalForce
 # it is only added internally before computing the various estimates . . .
