@@ -59,10 +59,11 @@ vis:
   publishVisualizationData: True
   drawMostLikely: True
   drawParticles: True
-  drawHistoricalMostLikely: False
+  drawHistoricalMostLikely: True
 
 solver:
   solverType: forcespro
+  loadAllSolvers: False
 
 
 externalForce:
@@ -72,7 +73,7 @@ externalForce:
 # this is the haddadin method
 twoStepEstimator:
   computeEstimate: True
-  visualize: True
+  visualize: False
   showContactRay: True
   # whether or not externalforce.py should be providing information about
   # which links actually have contact
@@ -91,3 +92,10 @@ proposal:
 
   historical:
     variance: 0.00015 # 0.01
+    numParticlesAtActual: 5
+
+  seedDistribution:
+    # draw randomly if squared error above this threshold
+    squaredErrorThreshold: 5.0
+    # draw this many particles randomly
+    numParticles: 10
