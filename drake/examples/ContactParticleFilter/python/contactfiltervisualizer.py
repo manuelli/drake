@@ -30,7 +30,7 @@ class ContactFilterVisualizer(object):
 
     def addSubscribers(self):
         subscriber = lcmUtils.addSubscriber("CONTACT_PARTICLE_FILTER_DATA", robotlocomotion_lcmtypes.CPF_data_t, self.onContactFilterMsg)
-        subscriber.setSpeedLimit(3)
+        subscriber.setSpeedLimit(10)
 
     def getCurrentPose(self):
         return self.robotSystem.robotStateJointController.q
@@ -43,9 +43,8 @@ class ContactFilterVisualizer(object):
 
         # set the color if it was passed in
         defaultColor = [0.5,0,0.5]
-        mostLikelyColor = [1,0.4,0.7] # hot pink
-        mostLikelyColor = [1,0,0]
-        historicalMostLikelyColor = [1,0,0]
+        mostLikelyColor = [1,0,0] # red
+        historicalMostLikelyColor = [0,1,0] # green
 
 
         if color is not None:
@@ -70,6 +69,7 @@ class ContactFilterVisualizer(object):
         plungerMaxLength = 0.4
         plungerMinLength = 0.02
         mostLikelyLength = 0.1
+
 
         d = DebugData()
         q = self.getCurrentPose()
@@ -97,7 +97,7 @@ class ContactFilterVisualizer(object):
             particle = particleSet.historicalMostLikely['particle']
             cfp = particle.cfp
             color = historicalMostLikelyColor
-            rayLength = 0.3
+            rayLength = mostLikelyLength
             forceDirection = cfp.contactNormal
             if particle.solnData is not None:
                 forceDirection = particle.solnData['force']

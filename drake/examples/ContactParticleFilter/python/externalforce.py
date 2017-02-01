@@ -659,13 +659,13 @@ class ExternalForce(object):
         drake_source_dir = os.getenv('DRAKE_SOURCE_DIR')
 
         if filename is None:
-            fullFilename = drake_source_dir + self.options['data']['contactCells']
+            fullFilename = drake_source_dir + self.options['data']['initialParticleLocations']
         else:
             fullFilename = drake_source_dir + \
                            "/drake/examples/ContactParticleFilter/config/" + filename
 
 
-        print "saving initial particle locations to ", filename
+        print "saving initial particle locations to ", fullFilename
 
         if os.path.isfile(fullFilename) and not overwrite:
             print "FILE ALREADY EXISTS, set the overwrite flag to true to overwrite"
@@ -673,40 +673,39 @@ class ExternalForce(object):
 
         ioUtils.saveDataToFile(fullFilename, self.externalForces, overwrite=overwrite)
 
+    # deprecated
+    # def addForcesFromFile(self, filename=None):
+    #     self.startCaptureMode()
+    #     drake_source_dir = os.getenv('DRAKE_SOURCE_DIR')
+    #
+    #     if filename is None:
+    #         fullFilename = drake_source_dir + self.options['data']['contactCells']
+    #     else:
+    #         fullFilename = drake_source_dir + \
+    #                        "/drake/examples/ContactParticleFilter/config/" + filename
+    #
+    #     fileObject = open(fullFilename, 'r')
+    #
+    #     reader = csv.reader(fileObject)
+    #     for row in reader:
+    #         line = []
+    #         for col in row:
+    #             line.append(col)
+    #
+    #         linkName = line[0]
+    #         forceLocation = np.array([float(line[1]), float(line[2]), float(line[3])])
+    #         forceDirection = np.array([float(line[4]), float(line[5]), float(line[6])])
+    #         self.addForce(linkName, wrench=None, forceDirection=forceDirection, forceMagnitude=0.0, forceLocation=forceLocation, inWorldFrame=False)
+
     def addForcesFromFile(self, filename=None):
         self.startCaptureMode()
         drake_source_dir = os.getenv('DRAKE_SOURCE_DIR')
 
         if filename is None:
-            fullFilename = drake_source_dir + self.options['data']['contactCells']
+            fullFilename = drake_source_dir + self.options['data']['initialParticleLocations']
         else:
             fullFilename = drake_source_dir + \
                            "/drake/examples/ContactParticleFilter/config/" + filename
-
-        fileObject = open(fullFilename, 'r')
-
-        reader = csv.reader(fileObject)
-        for row in reader:
-            line = []
-            for col in row:
-                line.append(col)
-
-            linkName = line[0]
-            forceLocation = np.array([float(line[1]), float(line[2]), float(line[3])])
-            forceDirection = np.array([float(line[4]), float(line[5]), float(line[6])])
-            self.addForce(linkName, wrench=None, forceDirection=forceDirection, forceMagnitude=0.0, forceLocation=forceLocation, inWorldFrame=False)
-
-    def addForcesFromFileNew(self, filename=None):
-        self.startCaptureMode()
-        drake_source_dir = os.getenv('DRAKE_SOURCE_DIR')
-
-        if filename is None:
-            fullFilename = drake_source_dir + self.options['data']['contactCells']
-        else:
-            fullFilename = drake_source_dir + \
-                           "/drake/examples/ContactParticleFilter/config/" + filename
-
-        fileObject = open(fullFilename, 'r')
 
         dataDict = ioUtils.readDataFromFile(fullFilename)
         for key, val in dataDict.iteritems():
@@ -784,24 +783,6 @@ class ExternalForce(object):
         FM = transformUtils.forceMomentTransformation(S,T)
         print FM
         return T,S, FM
-
-
-    def saveCurrentForcesToDict(self, name):
-        if not hasattr(self, 'savedForcesDict'):
-            self.savedForcesDict = dict()
-
-
-        data = dict()
-        for linkName, d in self.externalForces.iteritems():
-            data[linkName] = linkName
-            contactData = dict()
-            contactData['linkName'] = linkName
-            contactData['forceLocation'] = d['forceLocation']
-
-        self.savedForcesDict[name] = copy.deepcopy(self.externalForces)
-
-
-
 
 
 

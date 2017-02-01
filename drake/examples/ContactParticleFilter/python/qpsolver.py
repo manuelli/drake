@@ -3,6 +3,7 @@ __author__ = 'manuelli'
 import contactfiltergurobi
 import forcesproqp
 import numpy as np
+import copy
 
 NUM_FRICTION_CONE_BASIS_VECTORS = 4
 
@@ -11,10 +12,32 @@ NUM_FRICTION_CONE_BASIS_VECTORS = 4
 # Have the option of using either Gurobi or ForcesPro
 class QPSolver:
 
-    def __init__(self, numContactsList):
+    def __init__(self, numContactsList, config):
+        """
+        Config is a dict here
+        :param numContactsList:
+        :param config: a dict of the yaml config file that is
+        """
+        self.config = copy.deepcopy(config)
         self.numContactsList = numContactsList
-        self.gurobi = contactfiltergurobi.ContactFilterGurobi(self.numContactsList)
-        self.forcesPro = forcesproqp.ForcesProQP(self.numContactsList)
+
+        if self.config['solver']['loadAllSolvers']:
+            self.initializeForcesPro(numContactsList)
+            self.initializeGurobi(numContactsList)
+        elif self.config['solver']['solverType'] == 'gurobi':
+            self.initializeGurobi(numContactsList)
+        elif self.config['solver']['solverType'] == 'forcespro':
+            self.initializeForcesPro(numContactsList)
+        else:
+            raise ValueError("solver type must be one of gurobi or forcespro")
+
+    def initializeGurobi(self, numContactsList):
+        import contactfiltergurobi
+        self.gurobi = contactfiltergurobi.ContactFilterGurobi(numContactsList)
+
+    def initializeForcesPro(self, numContactsList):
+        import forcesproqp
+        self.forcesPro = forcesproqp.ForcesProQP(numContactsList)
 
     def solve(self, numContacts, residual, H_list, weightMatrix, solverType='gurobi'):
         solnData = {}
@@ -23,7 +46,7 @@ class QPSolver:
         elif solverType=='forcespro':
             solnData = self.forcesPro.solve(numContacts, residual, H_list, weightMatrix)
         else:
-            ValueError("solver type must be one of gurobi or forcespro")
+            raise ValueError("solver type must be one of gurobi or forcespro")
 
         return solnData
 
