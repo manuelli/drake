@@ -1,7 +1,7 @@
 group "0.ContactParticleFilter" {
 
   cmd "0.drake-visualizer" {
-    exec = "python drake/examples/ContactParticleFilter/python/director-cpf-launch.py";
+    exec = "python drake/examples/ContactParticleFilter/python/director_cpf_launch.py";
     host = "localhost";
   }
 

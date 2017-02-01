@@ -1,6 +1,8 @@
 __author__ = 'manuelli'
 import numpy as np
 import collections
+import yaml
+import os
 
 from collections import namedtuple
 
@@ -45,6 +47,14 @@ def createNamedTupleFromDict(d, name='Default'):
         setattr(x,key,val)
 
     return x
+
+def loadConfig(config_filename):
+    # load the options from the config file
+    drake_source_dir = os.getenv("DRAKE_SOURCE_DIR")
+    fullFileName = drake_source_dir + '/drake/examples/ContactParticleFilter/config/' + config_filename
+    stream = file(fullFileName)
+    config = yaml.load(stream)
+    return config
 
 
 class DequePeak(collections.deque):

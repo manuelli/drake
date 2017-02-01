@@ -28,7 +28,8 @@ class PythonDrakeModel(object):
 
     def __init__(self, floatingJointTypeString, filename):
         self.loadRobotModelFromURDFFilename(floatingJointTypeString, filename)
-        self.jointMap = self.getJointMap()
+        self.jointNameToIdxMap = self.getJointNameToIdxMap()
+        self.jointIdxToNameMap = self.getJointIdxToNameMap()
         self.jointNames = self.model.getJointNames()
 
     # filename should be relative to drake source director
@@ -51,7 +52,7 @@ class PythonDrakeModel(object):
         self.nv = self.model.numberOfJoints()
         self.numJoints = self.model.numberOfJoints()
 
-    def getJointMap(self):
+    def getJointNameToIdxMap(self):
 
         jointNames = self.model.getJointNames()
 
@@ -63,6 +64,25 @@ class PythonDrakeModel(object):
 
         return jointMap
 
+    def getJointIdxToNameMap(self):
+        jointNames = self.model.getJointNames()
+
+        jointIdxToNameMap = [None]*len(jointNames)
+
+        for idx, jointName in enumerate(jointNames):
+            jointIdxToNameMap[idx] = str(jointName)
+
+        return jointIdxToNameMap
+
+    def getJointNameFromIdx(self, jointIdx):
+        """
+        Returns joint name given a joint idx
+        :param jointIdx:
+        :return: jointName
+        """
+
+        return self.jointIdxToNameMap[jointIdx]
+
     def extractDataFromMessage(self, msgJointNames, msgData):
 
         msgJointMap = {}
@@ -71,7 +91,7 @@ class PythonDrakeModel(object):
 
 
         data = np.zeros(self.numJoints)
-        for jointName, idx in self.jointMap.iteritems():
+        for jointName, idx in self.jointNameToIdxMap.iteritems():
             data[idx] = msgJointMap[jointName]
 
 

@@ -8,7 +8,7 @@ robot:
 
 data:
   # the particle locations to have when adding a new contact points
-  initialParticleLocations: /drake/examples/ContactParticleFilter/config/kuka_iiwa_contact_particle_filter_initial_particle_locations.csv
+  initialParticleLocations: /drake/examples/ContactParticleFilter/config/kuka_iiwa_contact_particle_filter_initial_particle_locations.out
   # the cells in mesh on which contact is allowed
   contactCells: /drake/examples/ContactParticleFilter/config/kuka_iiwa_contact_particle_filter_contact_cells.out
 
@@ -16,9 +16,9 @@ data:
 thresholds:
   addContactPointTimeout: 0.25
   removeContactPointTimeout: 0.25
-  addContactPointSquaredError: 10.0 # 20
-  removeContactPointSquaredError: 10.0 # 20 normally
-  removeContactPointForce: 5.0 # this is not actually used
+  #add/remove thresholds should be the same
+  addContactPointSquaredError: 500.0
+  removeContactPointSquaredError: 500.0
   squaredErrorBoundForMostLikelyParticleAveraging: 10.0
   timeAboveThresholdToAddParticleSet: 0.2
 
@@ -39,7 +39,11 @@ numParticles: 50
 debug:
   publishTrueResidual: True
   useTrueResidual: False
-  maxNumParticleSets: 0
+  # toggle these channels to determine whether to use true residual (provided by externa force)
+  # or estimated residual
+  residualChannel: "RESIDUAL_OBSERVER_STATE"
+  # residualChannel: "RESIDUAL_ACTUAL"
+  maxNumParticleSets: 1
   forceThreshold: 1.0 # deprecated: not sure what this actually gets used for . . .
   
 # note this noise is not added to true residual published by externalForce
@@ -70,7 +74,11 @@ twoStepEstimator:
   computeEstimate: True
   visualize: True
   showContactRay: True
+  # whether or not externalforce.py should be providing information about
+  # which links actually have contact
+  provideLinkContactInfo: False
   publishChannel: TWO_STEP_ESTIMATOR
+  residualThresholdForContact: 1
 
 
 # options for the proposal distribution

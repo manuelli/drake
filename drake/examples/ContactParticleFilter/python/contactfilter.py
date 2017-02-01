@@ -26,6 +26,7 @@ from director import visualization as vis
 import director.vtkAll as vtk
 from director.timercallback import TimerCallback
 from director import objectmodel as om
+from director import ioUtils
 
 
 #CPF imports
@@ -129,6 +130,9 @@ class ContactFilter(object):
 
         self.weightMatrix = np.eye(self.drakeModel.numJoints)
 
+        self.covarianceMatrix = self.options['measurementModel']['var']*np.eye(self.drakeModel.numJoints)
+        self.covarianceMatrixInverse = np.linalg.inv(self.covarianceMatrix)
+
     def initializeDebugInfo(self):
         # debugging info
         self.debugInfo = {}
@@ -219,8 +223,8 @@ class ContactFilter(object):
 
         return squaredError
 
-
-    def loadContactFilterPointsFromFile(self, filename=None):
+    # deprecated
+    def loadContactFilterPointsFromFileOld(self, filename=None):
         if filename is None:
             filename = self.options['data']['initialParticleLocations']
 
@@ -236,6 +240,51 @@ class ContactFilter(object):
             linkName = line[0]
             forceLocation = np.array([float(line[1]), float(line[2]), float(line[3])])
             forceDirection = np.array([float(line[4]), float(line[5]), float(line[6])])
+            bodyId = self.drakeModel.model.findLinkID(linkName)
+
+
+            outputFrame = vtk.vtkTransform()
+            wrenchFrame = vtk.vtkTransform()
+            wrenchFrame.Translate(forceLocation)
+            forceMomentTransform = transformUtils.forceMomentTransformation(wrenchFrame, outputFrame)
+
+            t = transformUtils.getTransformFromOriginAndNormal([0.0,0.0,0.0], forceDirection)
+            rotatedFrictionCone = np.zeros((3,4))
+            for i in xrange(0,4):
+                rotatedFrictionCone[:,i] = t.TransformVector(self.frictionCone[:,i])
+
+
+            # need to be careful, the force moment transform is for a wrench, we just have a force
+            # J_alpha = 6 x 4, since there are 4 things in the friction cone
+            J_alpha = np.dot(forceMomentTransform[:,3:], rotatedFrictionCone)
+
+            contactFilterPoint = ContactFilterPoint(linkName=linkName, contactLocation=forceLocation,
+                                  contactNormal=forceDirection, bodyId=bodyId,
+                                  forceMomentTransform=forceMomentTransform,
+                                  rotatedFrictionCone=rotatedFrictionCone,
+                                  J_alpha = J_alpha)
+
+            if self.contactFilterPointDict.has_key(linkName):
+                self.contactFilterPointDict[linkName].append(contactFilterPoint)
+            else:
+                self.contactFilterPointDict[linkName] = [contactFilterPoint]
+
+            self.contactFilterPointListAll.append(contactFilterPoint)
+
+    def loadContactFilterPointsFromFile(self, filename=None):
+        drake_source_dir = os.getenv('DRAKE_SOURCE_DIR')
+        if filename is None:
+            fullFilename = drake_source_dir + self.options['data']['initialParticleLocations']
+        else:
+            fullFilename = drake_source_dir + \
+                           "/drake/examples/ContactParticleFilter/config/" + filename
+
+        dataDict = ioUtils.readDataFromFile(fullFilename)
+        for key, val in dataDict.iteritems():
+
+            linkName = val['linkName']
+            forceLocation = val['forceLocation']
+            forceDirection = val['forceDirection']
             bodyId = self.drakeModel.model.findLinkID(linkName)
 
 
@@ -426,12 +475,16 @@ class ContactFilter(object):
         squaredError = np.dot(np.dot((residual - impliedResidual).transpose(), self.weightMatrix),
                                     (residual - impliedResidual))
 
-        likelihood = np.exp(-1/(2.0*self.options['measurementModel']['var'])*squaredError)
+        residualBar = residual - impliedResidual
+
+        # residualBar.transpose() * self.covarianceMatrixInverse * residualBar
+        likelihoodExponent = np.dot(np.dot(residualBar.transpose(), self.covarianceMatrixInverse), residualBar)
+        likelihood = np.exp(-1/2.0*likelihoodExponent)
 
         # record the data somehow . . .
         solnData = {'cfpData': cfpData, 'impliedResidual': impliedResidual, 'squaredError': squaredError,
                     "numContactPoints": len(cfpList), 'qpObjValue': qpSolnData['objectiveValue'],
-                    'likelihood': likelihood, 'time': self.currentTime}
+                    'likelihood': likelihood, 'likelihoodExponent': likelihoodExponent, 'time': self.currentTime}
         return solnData
 
     def computeLikelihoodFull(self, residual, publish=True, verbose=False):
