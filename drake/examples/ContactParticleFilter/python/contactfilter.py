@@ -33,7 +33,6 @@ from director import ioUtils
 import robotlocomotion as robotlocomotion_lcmtypes
 import contactpointlocator
 import contactfilterutils as cfUtils
-import contactfiltergurobi
 import qpsolver
 from pythondrakemodel import PythonDrakeModel
 
@@ -64,11 +63,12 @@ class ContactFilter(object):
         self.contactFilterPointDict = dict()
         self.contactFilterPointListAll = []
         self.loadContactFilterPointsFromFile()
+        self.initializeSeedParticleSet()
         self.running = False
         self.doMultiContactEstimate = True
         self.addSubscribers()
         self.initializePublishChannels()
-        self.initializeGurobiModel()
+
         self.initializeSolver()
         self.initializeColorsForParticleSets()
         self.initializeTestParticleSet()
@@ -87,6 +87,10 @@ class ContactFilter(object):
 
         self.initializeTestTimers()
         self.initializeContactFilterState()
+
+        #only initialize gurobi model if option to load all solvers is set
+        if self.options['solver']['loadAllSolvers']:
+            self.initializeGurobiModel()
 
 
         # self.addTestParticleSetToParticleSetList()
@@ -223,53 +227,6 @@ class ContactFilter(object):
 
         return squaredError
 
-    # deprecated
-    def loadContactFilterPointsFromFileOld(self, filename=None):
-        if filename is None:
-            filename = self.options['data']['initialParticleLocations']
-
-        fullFilePath = os.getenv('DRAKE_SOURCE_DIR') + filename
-        fileObject = open(fullFilePath, 'r')
-
-        reader = csv.reader(fileObject)
-        for row in reader:
-            line = []
-            for col in row:
-                line.append(col)
-
-            linkName = line[0]
-            forceLocation = np.array([float(line[1]), float(line[2]), float(line[3])])
-            forceDirection = np.array([float(line[4]), float(line[5]), float(line[6])])
-            bodyId = self.drakeModel.model.findLinkID(linkName)
-
-
-            outputFrame = vtk.vtkTransform()
-            wrenchFrame = vtk.vtkTransform()
-            wrenchFrame.Translate(forceLocation)
-            forceMomentTransform = transformUtils.forceMomentTransformation(wrenchFrame, outputFrame)
-
-            t = transformUtils.getTransformFromOriginAndNormal([0.0,0.0,0.0], forceDirection)
-            rotatedFrictionCone = np.zeros((3,4))
-            for i in xrange(0,4):
-                rotatedFrictionCone[:,i] = t.TransformVector(self.frictionCone[:,i])
-
-
-            # need to be careful, the force moment transform is for a wrench, we just have a force
-            # J_alpha = 6 x 4, since there are 4 things in the friction cone
-            J_alpha = np.dot(forceMomentTransform[:,3:], rotatedFrictionCone)
-
-            contactFilterPoint = ContactFilterPoint(linkName=linkName, contactLocation=forceLocation,
-                                  contactNormal=forceDirection, bodyId=bodyId,
-                                  forceMomentTransform=forceMomentTransform,
-                                  rotatedFrictionCone=rotatedFrictionCone,
-                                  J_alpha = J_alpha)
-
-            if self.contactFilterPointDict.has_key(linkName):
-                self.contactFilterPointDict[linkName].append(contactFilterPoint)
-            else:
-                self.contactFilterPointDict[linkName] = [contactFilterPoint]
-
-            self.contactFilterPointListAll.append(contactFilterPoint)
 
     def loadContactFilterPointsFromFile(self, filename=None):
         drake_source_dir = os.getenv('DRAKE_SOURCE_DIR')
@@ -316,6 +273,24 @@ class ContactFilter(object):
 
             self.contactFilterPointListAll.append(contactFilterPoint)
 
+    def initializeSeedParticleSet(self):
+        """
+        Sets up the seed particle set. Just copies from self.contactFilterPointListAll
+        :return: None
+        """
+        particleListCopy = []
+        for contactFilterPoint in self.contactFilterPointListAll:
+            particle = ContactFilterParticle(cfp=contactFilterPoint)
+            particleListCopy.append(particle)
+
+        self.seedParticleSet = SingleContactParticleSetWithRandomSampling()
+        self.seedParticleSet.particleList = particleListCopy
+        self.seedParticleSet.setupRandomSampling()
+
+
+
+
+    # TODO (manuelli): DEPRECATED, remove this
     def setupMotionModelData(self, withinLinkOnly=False):
         # need to make sure you call loadContactFilterPointsFromFile before you get here
 
@@ -384,6 +359,7 @@ class ContactFilter(object):
 
 
     def initializeGurobiModel(self):
+        import contactfiltergurobi
         # careful here, Mosek models leak memory apparently. I am using gurobi instead
         numContactsList = [1,2,3,4]
         self.gurobi = contactfiltergurobi.ContactFilterGurobi(numContactsList=numContactsList)
@@ -392,7 +368,7 @@ class ContactFilter(object):
     def initializeSolver(self):
         # numContactsList = [1,2,3,4]
         numContactsList = [1,2,3,4]
-        self.qpSolver = qpsolver.QPSolver(numContactsList)
+        self.qpSolver = qpsolver.QPSolver(numContactsList, self.options)
 
     def initializeTestParticleSet(self):
         # creates a particle set with all particles
@@ -780,7 +756,6 @@ class ContactFilter(object):
             self.applyMotionModelSingleParticleSet(particleSet, useNewMotionModel=True)
             return
 
-        historicalMostLikelyPositionInWorld = self.getCFPLocationInWorld(particleSet.historicalMostLikely['particle'].cfp)
 
 
         particleList = particleSet.particleList
@@ -796,9 +771,35 @@ class ContactFilter(object):
         self.sampleFromHistoricalMostLikelyProposalDistribution(particleSet, historicalSampleParticleList)
 
 
+        # only sample from seed distribution if squared error is above some threshold
+        squaredErrorForParticleSet = particleSet.mostLikelyParticle.solnData['squaredError']
+        if squaredErrorForParticleSet > self.options['proposal']['seedDistribution']['squaredErrorThreshold']:
+            self.sampleFromSeedDistribution(particleSet)
+
+    # TODO (manuelli): Make this smarter, only add particles on links including and past where the residual is above the threshold
+    def sampleFromSeedDistribution(self, particleSet):
+        """
+        Samples particles randomly from the seed particle set, adds them to current particle list
+        :param particleSet:
+        :return:
+        """
+        print "squared error is large, drawing randomly from seed distribution"
+        numRandomParticles = self.options['proposal']['seedDistribution']['numParticles']
+        newParticles = self.seedParticleSet.drawRandomParticles(numRandomParticles)
+
+        for particle in newParticles:
+            particleSet.addParticle(particle)
+
+
     # most likely particle and historical most likely have to be non-zero before getting here
     # i.e. you must have done at least one measurement step
     def sampleFromHistoricalMostLikelyProposalDistribution(self, particleSet, particleList):
+        """
+        Add samples around the historical most likely point
+        :param particleSet: the particleList we are modifying
+        :param particleList:
+        :return:
+        """
 
 
         historicalMostLikelyPositionInWorld = self.getCFPLocationInWorld(particleSet.historicalMostLikely['particle'].cfp)
@@ -827,8 +828,13 @@ class ContactFilter(object):
             particle.proposalData['weight'] = motionModelLikelihood/proposalLikelihood
 
 
+        #add some particles exactly at the historicalMostLikely location
+        historicalMostlikelyParticle = particleSet.historicalMostLikely['particle']
+        for i in range(self.options['proposal']['historical']['numParticlesAtActual']):
+            newParticle = historicalMostlikelyParticle.deepCopy()
+            particleSet.addParticle(newParticle)
 
-
+    #TODO (manuelli): Is this used anywhere? If not should deprecate
     def sampleFromHistoricalMostLikelyProposalDistributionSingleParticle(self, particle, historicalMostLikelyPositionInWorld):
         pass
 
@@ -2066,6 +2072,43 @@ class SingleContactParticleSet(object):
     def getNumberOfParticles(self):
         return len(self.particleList)
 
+    @staticmethod
+    def copyParticleList(particleList):
+        particleListCopy = [None]*len(particleList)
+        for idx, particle in enumerate(particleList):
+            particleListCopy[idx] = particle.deepCopy()
+
+
+class SingleContactParticleSetWithRandomSampling(SingleContactParticleSet):
+
+    def __init__(self, solnDataQueueTimeout=1.0, color=[0,0,1]):
+        SingleContactParticleSet.__init__(self, solnDataQueueTimeout=solnDataQueueTimeout, color=color)
+
+    def setupRandomSampling(self):
+        """
+        Creates a random variable that will allow you sample from this set of particles
+        :return:
+        """
+        numParticles = len(self.particleList)
+        xk = np.arange(numParticles)
+        pk = 1.0/numParticles*np.ones(numParticles)
+        self.samplingRandomVariable = scipy.stats.rv_discrete(values=(xk, pk))
+
+    def drawRandomParticles(self, numRandomSamples):
+        """
+        Draws the specified number of random particles
+        :param numRandomSamples:
+        :return: list of partilces
+        """
+        randomIdx = self.samplingRandomVariable.rvs(size=numRandomSamples)
+        randomParticleList = []
+        for idx in randomIdx:
+            randomParticleList.append(self.particleList[idx].deepCopy())
+
+        return randomParticleList
+
+
+
 
 
 class LinkFrameContainer:
@@ -2082,3 +2125,5 @@ class LinkFrameContainer:
 
     def getLinkFrame(self, linkName):
         return self.linkFrames[linkName]
+
+

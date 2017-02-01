@@ -111,7 +111,7 @@ class RobotPoseTranslator(object):
         jointNames = drakeModel.getJointNames()
 
         self.numJoints = len(jointNames)
-        self.jointIdxToDirectorJointIdx = np.zeros(self.numJoints)
+        self.jointIdxToDirectorJointIdx = [None]*self.numJoints
 
         for idx, name in enumerate(jointNames):
             if name in directorJointNames:
