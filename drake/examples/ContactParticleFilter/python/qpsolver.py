@@ -1,7 +1,6 @@
 __author__ = 'manuelli'
 
-import contactfiltergurobi
-import forcesproqp
+
 import numpy as np
 import copy
 
