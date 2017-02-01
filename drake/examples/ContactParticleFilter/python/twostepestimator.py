@@ -1,28 +1,111 @@
 __author__ = 'manuelli'
-import numpy as np
 
+# system imports
+import numpy as np
+from collections import namedtuple
+
+# director imports
 from director import transformUtils
 import director.vtkAll as vtk
+from director import lcmUtils
 
-
+# CPF imports
 from pythondrakemodel import PythonDrakeModel
 import contactfilterutils as cfUtils
 
 class TwoStepEstimator:
 
-    def __init__(self, robotStateModel, robotStateJointController, linkMeshData, config):
+    def __init__(self, robotStateModel, robotStateJointController, linkMeshData, config_filename):
+        """
+
+        :param robotStateModel:
+        :param robotStateJointController:
+        :param linkMeshData: can be found in externalForce.linkMeshData
+        :param config: config filename, expected to be examples/ContactParticleFilter/config directory
+        """
         self.robotStateModel = robotStateModel
         self.robotStateJointController = robotStateJointController
-        self.config = config
+        self.config = cfUtils.loadConfig(config_filename)
         self.createDrakeModel()
         self.initializeRobotPoseTranslator()
         self.linkMeshData = linkMeshData
+        self.computeResidualThresholdForContact()
+
 
     def createDrakeModel(self, filename=None):
         self.drakeModel = PythonDrakeModel(self.config['robot']['floatingBaseType'], self.config['robot']['urdf'])
 
     def initializeRobotPoseTranslator(self):
         self.robotPoseTranslator = cfUtils.RobotPoseTranslator(self.robotStateModel.model, self.drakeModel.model)
+
+    def computeResidualThresholdForContact(self):
+        self.residualThresholdForContact = self.config['twoStepEstimator']['residualThresholdForContact']*np.ones(self.drakeModel.numJoints)
+
+
+
+    # def setupSubscribers(self):
+    #     lcmUtils.subscribe(self.config['debug']['residualChannel'], self.onResidualObserverState)
+
+    #
+    # def onResidualObserverState(self, msg):
+    #     msgJointNames = msg.joint_name
+    #     msgData = msg.residual
+    #     residual = self.drakeModel.extractDataFromMessage(msgJointNames, msgData)
+    #     self.state.residual = residual
+    #
+    #     self.estimationStep()
+
+    # def estimationStep(self):
+    #     """
+    #     The main loop, does estimation
+    #     Uses the internal state to get the residual
+    #     :return: None
+    #     """
+    #
+    #     if not self.config['twoStepEstimator']['computeEstimate']:
+    #         return
+    #
+    #     squaredError = self.getSquaredErrorFromResidual(self.state.residual)
+    #     # return if squared error is small
+    #     if squaredError < self.config['thresholds']['addContactPointSquaredError']:
+    #         return
+    #
+    #     linkIdxWithExternalForce = self.findLinkIdxWithExternalForceFromResidual(self.state.residual)
+    #
+    #     # return if nothing is above threshold
+    #     if linkIdxWithExternalForce is None:
+    #         return
+    #
+    #     # we have gotten this far, so compute the estimate
+    #     linkNameWithExternalForce = self.drakeModel.getJointNameFromIdx(linkIdxWithExternalForce)
+    #     data = self.computeTwoStepEstimate(self.state.residual,
+    #                                            linkNameWithExternalForce)
+
+
+    def getSquaredErrorFromResidual(self, residual):
+        """
+        Computes the squared error given the residual
+        :param residual:
+        :return: squared error of the residual
+        """
+        squaredError = np.dot(residual.transpose(), residual)
+        return squaredError
+
+    def findLinkNameWithExternalForceFromResidual(self, residual):
+        """
+        Finds largest index in residual that is above threshold
+        :param residual:
+        :return: Largest index in residual that is above threshold. Returns None
+        if there is no index above threshold
+        """
+        idx = np.where(np.abs(residual) > self.residualThresholdForContact)[0]
+        if len(idx) == 0:
+            return None
+
+        jointIdx = idx[-1]
+        jointName = self.drakeModel.getJointNameFromIdx(jointIdx)
+        linkName = str(self.drakeModel.model.FindNameOfChildBodyOfJoint(jointName))
+        return linkName
 
     # be careful here if director and this use different models
     # for example if we are FIXED base and director has ROLLPITCHYAW
@@ -31,10 +114,38 @@ class TwoStepEstimator:
         q = self.robotPoseTranslator.translateDirectorPoseToRobotPose(q_director)
         return q
 
-    def computeTwoStepEstimate(self, residual, linksWithContactForce):
-        returnData = dict()
-        if len(linksWithContactForce)==0:
-            return returnData
+    def computeTwoStepEstimate(self, residual, linkNamesWithContactForce=None):
+        """
+        Computes the two step estimate from Haddadin et. al. paper
+        :param residual:
+        :param linksWithContactForce: If this is None we will figure ouit
+        links with contact force on our own, assuming there is only one
+        :return: return estimate data if we actually did the estimation,
+        otherwise returns None
+        """
+
+        # print "computing the two step estimate"
+
+
+        # figure out if this residual is above threshold where we should
+        # actually be computing the residual
+        squaredError = self.getSquaredErrorFromResidual(residual)
+        if squaredError < self.config['thresholds']['addContactPointSquaredError']:
+            return None
+
+        if linkNamesWithContactForce is None:
+            # print "two step estimate is computing it's own active link"
+            linkName = self.findLinkNameWithExternalForceFromResidual(residual)
+            if linkName is None:
+                return
+            else:
+                # the code below expects this to be a list
+                linkNamesWithContactForce = [linkName]
+
+        if len(linkNamesWithContactForce) == 0:
+            return None
+
+
 
         # do kinematics on our internal model
         q = self.getCurrentPose()
@@ -43,7 +154,7 @@ class TwoStepEstimator:
         # stack the jacobians
         jacobianTransposeList = []
 
-        for linkName in linksWithContactForce:
+        for linkName in linkNamesWithContactForce:
             linkId = self.drakeModel.model.findLinkID(linkName)
             J = self.drakeModel.geometricJacobian(0,linkId,linkId, 0, False)
             jacobianTransposeList.append(J.transpose())
@@ -57,9 +168,9 @@ class TwoStepEstimator:
         stackedWrenches = np.dot(pinvJacobian, residual)
 
 
-
+        returnData = dict()
         # unpack the wrenches
-        for idx, linkName in enumerate(linksWithContactForce):
+        for idx, linkName in enumerate(linkNamesWithContactForce):
             startIdx = 6*idx
             endIdx = startIdx + 6
             wrench = stackedWrenches[startIdx:endIdx]

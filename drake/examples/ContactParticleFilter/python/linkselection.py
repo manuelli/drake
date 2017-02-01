@@ -213,10 +213,13 @@ class LinkWidget(object):
 
     def saveCapturedCellsToFile(self, filename=None, overwrite=False):
 
-        if filename is None:
-            filename = self.externalForce.options['data']['contactCells']
+        drake_source_dir = os.getenv('DRAKE_SOURCE_DIR')
 
-        fullFilename = os.getenv('DRAKE_SOURCE_DIR') + filename
+        if filename is None:
+            fullFilename = drake_source_dir + self.externalForce.options['data']['contactCells']
+        else:
+            fullFilename = drake_source_dir + \
+                           "/drake/examples/ContactParticleFilter/config/" + filename
 
         dataDict = {}
         for linkName, data in self.linkDict.iteritems():
@@ -226,17 +229,26 @@ class LinkWidget(object):
 
         ioUtils.saveDataToFile(fullFilename, dataDict, overwrite=overwrite)
 
-    def loadCapturedCellsFromFile(self, filename="test"):
+    def loadCapturedCellsFromFile(self, filename=None):
 
-        drcBase = os.getenv('DRC_BASE')
-        robotType = drcargs.getGlobalArgParser().getRobotType()
-        fullFilename = drcBase + "/software/control/residual_detector/python/data/contactparticlefilter/" + \
-                       robotType + "/" + filename + ".out"
+        drake_source_dir = os.getenv('DRAKE_SOURCE_DIR')
+
+        if filename is None:
+            fullFilename = drake_source_dir + self.externalForce.options['data']['contactCells']
+        else:
+            fullFilename = drake_source_dir +\
+                           "/drake/examples/ContactParticleFilter/config/" + filename
+
+        if len(self.linkDict) == 0:
+            raise Exception("linkDict is empty, call startCellCaptureMode and then"
+                            "try again")
 
         dataDict = ioUtils.readDataFromFile(fullFilename)
 
         for linkName, data in dataDict.iteritems():
             cellCodeArray = numpy_support.numpy_to_vtk(data)
+            linkName = str(linkName)
+
             self.linkDict[linkName]['colorCodeArray'].DeepCopy(cellCodeArray)
             self.linkDict[linkName]['colorCodeArray'].Modified()
 

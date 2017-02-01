@@ -56,7 +56,7 @@ class ExternalForce(object):
         self.createPlunger()
         self.createMeshDataAndLocators()
 
-        self.createTwoStepEstimator()
+        self.createTwoStepEstimator(configFilename)
 
         self.visObjectDrawTime = dict()
         self.timeout = 1.5
@@ -106,9 +106,9 @@ class ExternalForce(object):
             data['locator'] = self.buildCellLocator(polyData)
             self.linkMeshData[linkName] = data
 
-    def createTwoStepEstimator(self):
+    def createTwoStepEstimator(self, configFilename):
         self.twoStepEstimator = TwoStepEstimator(self.robotStateModel, self.robotSystem.robotStateJointController,
-                                                 self.linkMeshData, self.options)
+                                                 self.linkMeshData, configFilename)
 
     # either get the EST_ROBOT_STATE utime or just use the wall clock
     def getUtime(self):
@@ -351,7 +351,7 @@ class ExternalForce(object):
                 trueResidual += singleContactResidual
 
         # this message goes to the simulator
-        msg.num_external_forces = numExternalForces;
+        msg.num_external_forces = numExternalForces
         lcmUtils.publish(self.publishChannel, msg)
 
         # this message is for analysis
@@ -377,10 +377,14 @@ class ExternalForce(object):
 
         if self.options['twoStepEstimator']['computeEstimate']:
             twoStepEstimateData = self.computeTwoStepEstimate()
-            self.publishTwoStepEstimateData(twoStepEstimateData, msgMultipleContactLocations)
 
-            if self.options['twoStepEstimator']['visualize']:
-                self.visualizeTwoStepEstimate(twoStepEstimateData)
+            # if twoStepEstimateData is None it means that some criterion
+            # wasn't satisfied and we didn't actually perform the estimation
+            if twoStepEstimateData is not None:
+                self.publishTwoStepEstimateData(twoStepEstimateData, msgMultipleContactLocations)
+
+                if self.options['twoStepEstimator']['visualize']:
+                    self.visualizeTwoStepEstimate(twoStepEstimateData)
 
     def visualizeTwoStepEstimate(self, data):
         for linkName, singleContactData in data.iteritems():
@@ -588,17 +592,22 @@ class ExternalForce(object):
         # this means we haven't gotten any data yet
         # so just return an empty dict which means no data
         if residual is None:
-            return dict()
+            return None
 
         if self.options['noise']['addNoise']:
             residualSize = np.size(residual)
             residual = residual + np.random.normal(scale=self.options['noise']['stddev'], size=residualSize)
 
-        # figure out which links actually have contact forces
-        linksWithContactForce = []
-        for key, val in self.externalForces.iteritems():
-            if val['forceMagnitude'] > 0.1:
-                linksWithContactForce.append(key)
+
+        if self.options['twoStepEstimator']['provideLinkContactInfo']:
+            # only do this if we are using fake residual
+            linksWithContactForce = []
+            for key, val in self.externalForces.iteritems():
+                if val['forceMagnitude'] > 0.1:
+                    linksWithContactForce.append(key)
+        else:
+            linksWithContactForce=None
+
 
         return self.twoStepEstimator.computeTwoStepEstimate(residual, linksWithContactForce)
 
@@ -607,16 +616,21 @@ class ExternalForce(object):
         for key in self.externalForces.keys():
             print key
 
-    def saveForceLocationsToFile(self, filename=None, verbose=False, overwrite=False):
+    # deprecated
+    def saveForceLocationsToFileOld(self, filename=None, verbose=False, overwrite=False):
+
+        drake_source_dir = os.getenv('DRAKE_SOURCE_DIR')
 
         if filename is None:
-            filename = self.options['data']['initialParticleLocations']
+            fullFilename = drake_source_dir + self.options['data']['contactCells']
+        else:
+            fullFilename = drake_source_dir + \
+                           "/drake/examples/ContactParticleFilter/config/" + filename
 
-        fullFilePath = os.getenv('DRAKE_SOURCE_DIR') + filename
 
         print "saving initial particle locations to ", filename
 
-        if os.path.isfile(fullFilePath) and not overwrite:
+        if os.path.isfile(fullFilename) and not overwrite:
             print "FILE ALREADY EXISTS, set the overwrite flag to true to overwrite"
             return
 
@@ -639,14 +653,37 @@ class ExternalForce(object):
 
         fileObject.close()
 
+
+    def saveForceLocationsToFile(self, filename=None, verbose=False, overwrite=False):
+
+        drake_source_dir = os.getenv('DRAKE_SOURCE_DIR')
+
+        if filename is None:
+            fullFilename = drake_source_dir + self.options['data']['contactCells']
+        else:
+            fullFilename = drake_source_dir + \
+                           "/drake/examples/ContactParticleFilter/config/" + filename
+
+
+        print "saving initial particle locations to ", filename
+
+        if os.path.isfile(fullFilename) and not overwrite:
+            print "FILE ALREADY EXISTS, set the overwrite flag to true to overwrite"
+            return
+
+        ioUtils.saveDataToFile(fullFilename, self.externalForces, overwrite=overwrite)
+
     def addForcesFromFile(self, filename=None):
         self.startCaptureMode()
-        if filename is None:
-            filename = "directorDense.csv"
+        drake_source_dir = os.getenv('DRAKE_SOURCE_DIR')
 
-        drcBase = os.getenv('DRC_BASE')
-        fullFilePath = drcBase + "/software/control/residual_detector/src/particle_grids/" + filename
-        fileObject = open(fullFilePath, 'r')
+        if filename is None:
+            fullFilename = drake_source_dir + self.options['data']['contactCells']
+        else:
+            fullFilename = drake_source_dir + \
+                           "/drake/examples/ContactParticleFilter/config/" + filename
+
+        fileObject = open(fullFilename, 'r')
 
         reader = csv.reader(fileObject)
         for row in reader:
@@ -657,6 +694,25 @@ class ExternalForce(object):
             linkName = line[0]
             forceLocation = np.array([float(line[1]), float(line[2]), float(line[3])])
             forceDirection = np.array([float(line[4]), float(line[5]), float(line[6])])
+            self.addForce(linkName, wrench=None, forceDirection=forceDirection, forceMagnitude=0.0, forceLocation=forceLocation, inWorldFrame=False)
+
+    def addForcesFromFileNew(self, filename=None):
+        self.startCaptureMode()
+        drake_source_dir = os.getenv('DRAKE_SOURCE_DIR')
+
+        if filename is None:
+            fullFilename = drake_source_dir + self.options['data']['contactCells']
+        else:
+            fullFilename = drake_source_dir + \
+                           "/drake/examples/ContactParticleFilter/config/" + filename
+
+        fileObject = open(fullFilename, 'r')
+
+        dataDict = ioUtils.readDataFromFile(fullFilename)
+        for key, val in dataDict.iteritems():
+            linkName = val['linkName']
+            forceLocation = val['forceLocation']
+            forceDirection = val['forceDirection']
             self.addForce(linkName, wrench=None, forceDirection=forceDirection, forceMagnitude=0.0, forceLocation=forceLocation, inWorldFrame=False)
 
     def createPlunger(self):
@@ -745,10 +801,6 @@ class ExternalForce(object):
         self.savedForcesDict[name] = copy.deepcopy(self.externalForces)
 
 
-    def writeSavedForcesToFile(self, filename='savedForces.out', overwrite=True):
-        fullFilename = os.getenv('DRC_BASE') + '/software/control/residual_detector/python/data/' + filename
-
-        ioUtils.saveDataToFile(fullFilename, self.savedForcesDict, overwrite=overwrite)
 
 
 
