@@ -43,7 +43,7 @@ def makeRobotSystem(view):
 
 
 # create a default mainwindow app
-app = mainwindowapp.MainWindowAppFactory().construct()
+app = mainwindowapp.MainWindowAppFactory().construct(globalsDict=globals())
 mainwindowapp.MainWindowPanelFactory().construct(app=app.app, view=app.view)
 
 # load a minimal robot system with ik planning
