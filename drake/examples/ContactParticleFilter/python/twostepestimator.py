@@ -104,7 +104,7 @@ class TwoStepEstimator:
 
         jointIdx = idx[-1]
         jointName = self.drakeModel.getJointNameFromIdx(jointIdx)
-        linkName = str(self.drakeModel.model.FindNameOfChildBodyOfJoint(jointName))
+        linkName = str(self.drakeModel.model.findNameOfChildBodyOfJoint(jointName))
         return linkName
 
     # be careful here if director and this use different models
