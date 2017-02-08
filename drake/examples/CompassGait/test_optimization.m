@@ -17,15 +17,16 @@ gammaSlopeInteger = 3;
 gammaOpt = gammaSlopeInteger*pi/180; % do it on a zero slope
 p = CompassGaitPlant(gammaOpt);
 options = struct();
-options.numKnotPoints = 40;
+options.numKnotPoints = 50;
 options.plant = p;
 options.u_const_across_transitions = false;
 options.stanceLegSweepAngleLowerBound = 0.25;
 options.useDeltaUCost = false;
 options.deltaUCostWeight = 3.0;
+options.time_option = 2; % allow time to vary
 
 segmentIdx = xtraj.traj{8};
 xtraj_single_step = xtraj.traj{8};
 xtraj_single_step_no_mode = xtraj_single_step(2:5);
-[p, utraj_opt, xtraj_opt] = SingleStepOptimizationUncertainTerrainHeight(xtraj_single_step_no_mode, options);
+returnData = SingleStepOptimizationUncertainTerrainHeight(xtraj_single_step_no_mode, options);
 

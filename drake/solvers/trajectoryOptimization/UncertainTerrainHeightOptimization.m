@@ -10,20 +10,33 @@ N_j = {};
 nX; % num states
 nU; % num control inputs
 hybridPlant;
+costFunctionOptions;
 end
 
 methods
   function obj = UncertainTerrainHeightOptimization(hybridPlant, N, duration, varargin)
-    obj = obj@DircolTrajectoryOptimization(hybridPlant.modes{1},N,duration);
+    obj = obj@DircolTrajectoryOptimization(hybridPlant.modes{1},N,duration,varargin{:});
     disp('using a UncertaintyTerrainHeight optimizer')
     obj.nX = obj.plant.getNumStates();
     obj.nU = obj.plant.getNumInputs();
     obj.hybridPlant = hybridPlant;
   end
 
+  function obj = setupOptions(obj, options)
+    defaultOptions = struct();
+    defaultOptions.Q = eye(4);
+    defaultOptions.R = 1;
+
+    if nargin < 2
+      options = struct();
+    end
+
+    obj.costFunctionOptions = applyDefaults(options, defaultOptions);
+  end
+
 
   % adds variables for another trajectory
-  function obj = addTrajectoryDecisionVariables(obj, num_knot_points, hybridPlant)
+  function [obj, idx] = addTrajectoryDecisionVariables(obj, num_knot_points, hybridPlant)
     num_new_state_vars = obj.nX*num_knot_points;
     num_new_control_vars = obj.nU*num_knot_points;
 
@@ -76,7 +89,6 @@ methods
         
         obj = obj.addConstraint(constraints{i}, dyn_inds{i},[shared_data_index+i;shared_data_index+i+1]);
       end
-
   end
 
   % data should be a struct, with fields
@@ -124,7 +136,7 @@ methods
   end
 
   % if traj_idx = 0 then it is the nominal trajectory
-  function obj = addGuardConstraints(obj, traj_idx)
+  function obj = addGuardConstraints(obj, traj_idx, options)
     if (traj_idx == 0)
       xinds = obj.x_inds;
       uinds = obj.u_inds;
@@ -133,19 +145,28 @@ methods
     else
       xinds = obj.xtraj_inds{traj_idx};
       uinds = obj.utraj_inds{traj_idx};
-      hybridPlant = obj.hybridPlant_array{idx};
+      hybridPlant = obj.hybridPlant_array{traj_idx};
       N = obj.N_j{traj_idx};
     end
 
+    if nargin < 3
+      options = struct();
+      options.hybridPlant = hybridPlant;
+      options.knot_points = 1:N;
+      options.equality_constraint_on_last_knot_point = true;
+    end
+
     % they should all use the default hybrid plant
-    hybridPlant = obj.hybridPlant;
-    guard_fun = @(x) obj.guardFunction(hybridPlant, x);
-    for i=1:N
+    guard_fun = @(x) obj.guardFunction(options.hybridPlant, x);
+    for idx=1:length(options.knot_points)
+      i = options.knot_points(idx);
       guard_lb = 0;
       guard_ub = Inf;
 
       % guard should be >= 0 except for last knot point where it should be equal to zero
-      if (i==N)
+      if (idx==length(options.knot_points) && options.equality_constraint_on_last_knot_point)
+        disp('equality guard constraint')
+        i
         guard_ub = 0;
       end
 
@@ -163,8 +184,134 @@ methods
     % be careful with indices, only want to return gradient relevant to x
     % by default it is including everything
     start_idx = 2;
-    end_idx = 2+obj.nX-1;
+    end_idx = start_idx+obj.nX-1;
     df = dg(:,start_idx:end_idx);
+  end
+
+  function obj = addUncertainTerrainCost(obj)
+    nonlinear_cost = FunctionHandleObjective(obj.num_vars, @(z)obj.uncertainTerrainHeightCostFunction(z));
+
+    % tell the optimizer to user numerical gradients
+    nonlinear_cost.grad_method = 'numerical';
+    obj = obj.addCost(nonlinear_cost);
+  end
+
+  % vars are ALL the decision vars
+  function costVal = uncertainTerrainHeightCostFunction(obj, vars)
+    costVal = 0;
+    t = [0; cumsum(vars(obj.h_inds))];
+    x_nom = reshape(vars(obj.x_inds),[],obj.N);
+    u_nom = reshape(vars(obj.u_inds),[],obj.N);
+
+    numTerrainHeights = length(obj.xtraj_inds);
+    xJ = {};
+    uJ = {};
+    hJ = {};
+    for i=1:numTerrainHeights
+      xJ{i} = reshape(vars(obj.xtraj_inds{i}),[],obj.N_j{i});
+      uJ{i} = reshape(vars(obj.utraj_inds{i}),[],obj.N_j{i});
+      hJ{i} = vars(obj.htraj_inds{i});
+    end
+
+    stanceLegIdx = 2;
+    % tau_plus = x_nom(stanceLegIdx, 1); % this is positive usually
+    % tau_minus = x_nom(stanceLegIdx, 0); % this is negative
+    theta_max = max(x_nom(stanceLegIdx,:));
+    theta_min = min(x_nom(stanceLegIdx, :));
+    xtraj_phase = PPTrajectory(foh(x_nom(stanceLegIdx,:), x_nom));
+    utraj_phase = PPTrajectory(foh(x_nom(stanceLegIdx,:), u_nom));
+
+    Q = obj.costFunctionOptions.Q;
+    R = obj.costFunctionOptions.R;
+
+    function tau = tauFromTheta(theta)
+      tau = (theta - theta_min)/(theta_max - theta_min);
+    end
+
+    function theta = thetaFromTau(tau)
+      theta = tau*(theta_max - theta_min) + theta_min;
+    end
+
+    for j=1:numTerrainHeights
+      costValTemp = 0;
+      theta_j_plus = xJ{j}(stanceLegIdx, 1);
+      theta_j_minus = xJ{j}(stanceLegIdx, end);
+
+      tau_j_plus = tauFromTheta(theta_j_plus);
+      tau_j_minus = tauFromTheta(theta_j_minus);
+
+      % only go out to N_j{i} - 1 so it's easy to add the cost function
+      for n=1:obj.N_j{j}-2
+        x = xJ{i}(:,n);
+        u = uJ{i}(:,n);
+        theta = x(stanceLegIdx);
+        tau = tauFromTheta(theta);
+
+        % adjust theta if necessary
+        if (tau < 0)
+          theta = thetaFromTau(0);
+        elseif (tau > 1)
+          theta = thetaFromTau(1);
+        end
+
+        % matching point in the nominal trajecotry.
+        x_tilde = xtraj_phase.eval(theta);
+        u_tilde = utraj_phase.eval(theta);
+        deltaX = x - x_tilde;
+        deltaU = u - u_tilde;
+
+        dt = 0.5*(hJ{j}(n) + hJ{j}(n+1));
+        deltaCost = dt *(deltaX'*Q*deltaX + deltaU'*R*deltaU);
+        % the squared is due to the expression on page 20
+        deltaCost = deltaCost * (tau-tau_j_plus)/(tau_j_minus - tau_j_plus);
+        costValTemp = costValTemp + deltaCost;
+      end
+
+      % can also add the weight here if we want
+      costVal = costVal + (tau_j_minus - tau_j_plus)*costValTemp;
+    end
+  end
+
+  function returnData = solveTraj(obj, t_init, traj_init, data)
+    z0 = obj.getInitialVars(t_init, traj_init);
+
+    % initialize all the variables we have
+    for idx=1:length(data.t_init)
+      z0(obj.htraj_inds{idx}) = diff(data.t_init{idx});
+      z0(obj.xtraj_inds{idx}) = data.traj_init.x.eval(data.t_init{idx});
+    end
+
+    [z,F,info,infeasible_constraint_name] = obj.solve(z0);
+    xtraj = obj.reconstructStateTrajectory(z);
+    utraj = obj.reconstructInputTrajectory(z);
+
+    returnData = struct();
+    returnData.xtraj = xtraj;
+    returnData.utraj = utraj;
+    returnData.info = info;
+    returnData.infeasible_constraint_name = infeasible_constraint_name;
+    returnData.F = F;
+
+    returnData.xtraj_idx = {};
+    returnData.utraj_idx = {};
+
+    for traj_idx=1:length(obj.xtraj_inds)
+      [xtraj_temp, utraj_temp] = obj.reconstructStateAndInputTrajecotry(z, traj_idx);
+      returnData.xtraj_idx{traj_idx} = xtraj_temp;
+      returnData.utraj_idx{traj_idx} = utraj_temp;
+    end
+
+  end
+
+  function [xtraj, utraj] = reconstructStateAndInputTrajecotry(obj,z, traj_idx)
+    N = obj.N_j{traj_idx};
+    x = reshape(z(obj.xtraj_inds{traj_idx}),[],N);
+    u = reshape(z(obj.utraj_inds{traj_idx}),[],N);
+    t = [0; cumsum(z(obj.htraj_inds{traj_idx}))];
+
+    xtraj = PPTrajectory(foh(t,x));
+    xtraj = xtraj.setOutputFrame(obj.plant.getStateFrame);
+    utraj = PPTrajectory(foh(t,u));
   end
 
 end

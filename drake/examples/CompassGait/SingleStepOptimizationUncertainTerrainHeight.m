@@ -1,4 +1,4 @@
-function [p,utraj,xtraj,z,traj_opt, returnData]=SingleStepOptimizationUncertainTerrainHeight(xtraj_seed, options)
+function [returnData]=SingleStepOptimizationUncertainTerrainHeight(xtraj_seed, options)
 
 
 xtraj_seed = xtraj_seed.shiftTime(-xtraj_seed.tspan(1));
@@ -18,6 +18,8 @@ defaultOptions.stanceLegSweepAngleLowerBound = 0.2;
 defaultOptions.plot = true;
 defaultOptions.useDeltaUCost = false;
 defaultOptions.deltaUCostWeight = 1.0;
+defaultOptions.robustCostFunction.Q = eye(4);
+defaultOptions.robustCostFunction.R = 1;
 
 
 options = applyDefaults(options, defaultOptions);
@@ -30,16 +32,17 @@ else
 end
 
 
-% gamma = options.slope*pi/180; % this is the ground height
-% p = CompassGaitPlant();
-
 % number of knot points in the optimization
 N = options.numKnotPoints;
 
 duration = [0.4, 2.0];
 stancePlant = p.modes{1};
-% traj_opt = DircolTrajectoryOptimization(stancePlant, N, duration);
-traj_opt = UncertainTerrainHeightOptimization(p, N, duration);
+traj_opt = UncertainTerrainHeightOptimization(p, N, duration, options);
+
+costFunctionOptions = struct();
+costFunctionOptions.Q = eye(4);
+costFunctionOptions.R = 1;
+traj_opt = traj_opt.setupOptions(costFunctionOptions);
 
 x0 = [0;0;2;-.4];
 t1 = .417;
@@ -54,11 +57,6 @@ t_init = linspace(0,tf,N);
 traj_init = struct();
 traj_init.x = xtraj_seed;
 traj_init.u = ConstantTrajectory(0);
-% constraint at first knot point
-% traj_opt = traj_opt.addModeStateConstraint(1,BoundingBoxConstraint([0.05;-inf(3,1)],[0;inf(3,1)]),1);
-
-% traj_opt = traj_opt.addStateConstraint(BoundingBoxConstraint([-inf;0.05;-inf(2,1)],[inf(4,1)]),1);
-
 
 % linear constraint to control walking speed. Put a constraint on how the angle that the stance leg sweeps during one step.
 stanceLegInStateVarIdx = 2;
@@ -71,88 +69,76 @@ lb = options.stanceLegSweepAngleLowerBound;
 ub = Inf; % this is what controls the speed, is binding in general for flat ground optimization
 A = [1,-1];
 stanceLegSweepAngleConstraint = LinearConstraint(lb,ub,A);
-
-% traj_opt = traj_opt.addConstraint(stanceLegSweepAngleConstraint, xinds);
-
+traj_opt = traj_opt.addConstraint(stanceLegSweepAngleConstraint, xinds);
 
 
-
-% add the running cost
-% traj_opt = traj_opt.addRunningCost(@cost);
-
+%% add the running cost
 traj_opt = traj_opt.addRunningCost(@CompassGaitTrajectoryOptimizationUtils.controlInputQuadraticCost);
 
 %% add deltaU cost
 weight = 3;
 traj_opt = traj_opt.addDeltaUCost(weight);
 
+%% Add a second trajectory
+gamma_early = 2*pi/180;
+p_early = CompassGaitPlant(gamma_early);
+% [traj_opt, traj_idx] = traj_opt.addTrajectoryDecisionVariables(N, p_early);
+% traj_opt = traj_opt.addTrajectoryDynamicsConstraints(traj_idx);
 
-
+% add reset constraint for second trajectory
 
 %% add in the hybrid transition and periodicity constraints
-% first knot point should be what you get by applying reset map to the last
-% knot point. Also need to include guard functions.
-% transition_fun = @(xm,u,xp) transition_constraint_fun_lucas(@p.collisionDynamics,xm,u,xp);
-
-
-% transition_constraint_fun_lucas(@p.collisionDynamics,x0,0,x0);
-
-% numStates = stancePlant.getNumStates();
-% numInputs = stancePlant.getNumInputs();
-% jump_con = FunctionHandleConstraint(zeros(numStates,1), zeros(numStates,1), 2*numStates + numInputs, transition_fun);
-
-% jump_xind{1} = traj_opt.x_inds(:,end); % xm = x_inds for the last knot point
-% jump_xind{2} = traj_opt.u_inds(:,end); % u
-% jump_xind{3} = traj_opt.x_inds(:,1); % xp = x_inds for the first knot point
-
-% traj_opt = traj_opt.addConstraint(jump_con, jump_xind);
-
 data.xm_idx = traj_opt.x_inds(:,end);
 data.xp_idx = traj_opt.x_inds(:,1);
 traj_opt = traj_opt.addResetMapConstraint(data);
 
 
-%% Add guard function constraint at all the knot points
 
-% this adds guard for the final knot point only
-% guard_lb = 0;
-
-% guard_ub = 0; % should be 0 if this is where transition is happening, otherwise it's infinity
-% guard_fun = @(x,u) guard_constraint_fun(p, p.guard{1}{1}, x, u);
-% guard_con = FunctionHandleConstraint(guard_lb, guard_ub, numStates + numInputs, guard_fun);
-
-% guard_xind{1} = traj_opt.x_inds(:,end);
-% guard_xind{2} = traj_opt.u_inds(:,end);
-% traj_opt = traj_opt.addConstraint(guard_con, guard_xind);
-
-% % add guard constraint for all other knot points
-% for k=1:N
-%   % this adds guard for the final knot point only
-% guard_lb = 0;
-% guard_ub = Inf;
-% if (k==N)
-%   guard_ub = 0; % should be 0 if this is where transition is happening, otherwise it's infinity
-% end
-
-% guard_fun = @(x,u) guard_constraint_fun(p, p.guard{1}{1}, x, u);
-% guard_con = FunctionHandleConstraint(guard_lb, guard_ub, numStates + numInputs, guard_fun);
-
-% guard_xind{1} = traj_opt.x_inds(:,k);
-% guard_xind{2} = traj_opt.u_inds(:,k);
-% traj_opt = traj_opt.addConstraint(guard_con, guard_xind);
-% end
-
+%% hybrid guard constraints
 traj_idx = 0;
-traj_opt = traj_opt.addGuardConstraints(traj_idx);
+
+% add guard constraints for the early reset thing
+
+if true
+  N_early = N - 2;
+  guardOptions = struct();
+  guardOptions.hybridPlant = p_early;
+  guardOptions.knot_points = 1:N_early;
+  guardOptions.equality_constraint_on_last_knot_point = true;
+  traj_opt = traj_opt.addGuardConstraints(traj_idx, guardOptions);
+else
+  N_early = 0;
+end
+
+guardOptions = struct();
+guardOptions.hybridPlant = p;
+guardOptions.knot_points = N_early+1:N;
+guardOptions.equality_constraint_on_last_knot_point = true;
+traj_opt = traj_opt.addGuardConstraints(traj_idx, guardOptions);
+
+
+% Add guard constraints for early reset trajecotry
+% traj_idx = 1;
+% % use the default plant for doing this
+% traj_opt = traj_opt.addGuardConstraints(traj_idx);
+
+
+%% Add terrain uncertainty cost function
+% traj_opt = traj_opt.addUncertainTerrainCost();
 
 
 
-% traj_opt = traj_opt.setCheckGrad(true);
-% snprint('snopt.out');
+data = struct();
+data.t_init = {};
+data.traj_init = {};
 tic
-[xtraj,utraj,z,F,info] = solveTraj(traj_opt,t_init,traj_init);
-info % print out the info of the trajectory optimization, info = 1 is good.
+returnData = solveTraj(traj_opt,t_init,traj_init, data);
+returnData.info % print out the info of the trajectory optimization, info = 1 is good.
 toc
+
+xtraj = returnData.xtraj;
+utraj = returnData.utraj;
+
 if (options.plot)
   v = CompassGaitVisualizer(p, xtraj.getOutputFrame);
   figure(1); clf;
@@ -162,6 +148,10 @@ if (options.plot)
   figure(2); clf; hold on;
   fnplt(xtraj,[1 3]);
   fnplt(xtraj,[2 4]);
+  h = fnplt(xtraj_seed,[1 3]);
+  set(h,'Color','r');
+  h = fnplt(xtraj_seed,[2 4]);
+  set(h,'Color','r');
   title('xtraj');
 
   figure(3); clf; hold on;
@@ -174,8 +164,6 @@ if (options.plot)
   playback(v,xtraj, struct('slider', true));
 end
 
-
-returnData = struct();
 end
 
 
