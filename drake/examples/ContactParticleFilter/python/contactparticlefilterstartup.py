@@ -5,7 +5,7 @@ import contactfiltervisualizer
 from contactfilterutils import EstRobotStatePublisher
 import externalforce
 import linkselection
-# import cpftester
+import cpftester
 import argparse
 import director.applogic as app
 
@@ -23,7 +23,7 @@ def startup(robotSystem, globalsDict=None):
     contactFilter = contactfilter.ContactFilter(rs.robotStateModel, rs.robotStateJointController)
     contactFilterVisualizer = contactfiltervisualizer.ContactFilterVisualizer(rs, rs.robotStateModel)
     linkSelection = linkselection.LinkWidget(rs.view, rs.robotStateModel, externalForce)
-    # linkSelection.start()
+    linkSelection.start()
 
     estRobotStatePublisher = EstRobotStatePublisher(robotSystem)
 
