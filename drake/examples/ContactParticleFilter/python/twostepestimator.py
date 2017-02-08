@@ -41,47 +41,6 @@ class TwoStepEstimator:
     def computeResidualThresholdForContact(self):
         self.residualThresholdForContact = self.config['twoStepEstimator']['residualThresholdForContact']*np.ones(self.drakeModel.numJoints)
 
-
-
-    # def setupSubscribers(self):
-    #     lcmUtils.subscribe(self.config['debug']['residualChannel'], self.onResidualObserverState)
-
-    #
-    # def onResidualObserverState(self, msg):
-    #     msgJointNames = msg.joint_name
-    #     msgData = msg.residual
-    #     residual = self.drakeModel.extractDataFromMessage(msgJointNames, msgData)
-    #     self.state.residual = residual
-    #
-    #     self.estimationStep()
-
-    # def estimationStep(self):
-    #     """
-    #     The main loop, does estimation
-    #     Uses the internal state to get the residual
-    #     :return: None
-    #     """
-    #
-    #     if not self.config['twoStepEstimator']['computeEstimate']:
-    #         return
-    #
-    #     squaredError = self.getSquaredErrorFromResidual(self.state.residual)
-    #     # return if squared error is small
-    #     if squaredError < self.config['thresholds']['addContactPointSquaredError']:
-    #         return
-    #
-    #     linkIdxWithExternalForce = self.findLinkIdxWithExternalForceFromResidual(self.state.residual)
-    #
-    #     # return if nothing is above threshold
-    #     if linkIdxWithExternalForce is None:
-    #         return
-    #
-    #     # we have gotten this far, so compute the estimate
-    #     linkNameWithExternalForce = self.drakeModel.getJointNameFromIdx(linkIdxWithExternalForce)
-    #     data = self.computeTwoStepEstimate(self.state.residual,
-    #                                            linkNameWithExternalForce)
-
-
     def getSquaredErrorFromResidual(self, residual):
         """
         Computes the squared error given the residual
