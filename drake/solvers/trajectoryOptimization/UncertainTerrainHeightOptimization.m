@@ -44,6 +44,9 @@ methods
     [obj, new_variable_idx] = obj.addDecisionVariable(num_new_time_vars);
     new_time_variable_idx = new_variable_idx;
 
+    % add constraint that these time variables be non-negative
+    obj = obj.addConstraint(BoundingBoxConstraint(zeros(num_new_time_vars,1),inf(num_new_time_vars,1)),new_time_variable_idx);
+
     % add additional state variables
     [obj, new_variable_idx] = obj.addDecisionVariable(num_new_state_vars);
     new_state_variable_idx = reshape(new_variable_idx, [obj.nX, num_knot_points]);
@@ -95,6 +98,9 @@ methods
   % xm_idx
   % xp_idx
   function obj = addResetMapConstraint(obj, data)
+    disp('')
+    disp('---------------------------')
+    disp('adding reset map constraint')
     eval_handle = @(xm,xp) obj.hybridResetMap(xm,xp);
     reset_constraint = FunctionHandleConstraint(zeros(obj.nX,1),zeros(obj.nX,1), 2*obj.nX, eval_handle);
     reset_constraint_inds{1} = data.xm_idx;
@@ -126,6 +132,27 @@ methods
     end
   end
 
+  % only adds it on the nominal trajectory
+  % same as above but multiplies cost by dt * dU^2
+  function obj = addDeltaUCostIntegrated(obj, weight)
+    Q = weight*[1,;-1]*[1,-1];
+    b = zeros(2,1);
+    for i=1:obj.N-1
+      uind = [obj.u_inds(1,i); obj.u_inds(1,i+1)];
+      obj = obj.addCost(QuadraticConstraint(0,inf,Q,b), uind);
+    end
+  end
+
+
+  function obj = addDeltaTCost(obj, weight)
+    Q = weight;
+    b = 0;
+    for i=1:obj.N-1
+      hind = obj.h_inds(i);
+      obj = obj.addCost(QuadraticConstraint(0,inf,Q,b), hind);
+    end
+  end
+
   % this only applies to the nominal trajecotry
   function obj = addUConstAcrossTransitionsConstraint(obj)
     if options.u_const_across_transitions
@@ -145,7 +172,7 @@ methods
     else
       xinds = obj.xtraj_inds{traj_idx};
       uinds = obj.utraj_inds{traj_idx};
-      hybridPlant = obj.hybridPlant_array{traj_idx};
+      hybridPlant = obj.hybridPlant;
       N = obj.N_j{traj_idx};
     end
 
@@ -165,8 +192,11 @@ methods
 
       % guard should be >= 0 except for last knot point where it should be equal to zero
       if (idx==length(options.knot_points) && options.equality_constraint_on_last_knot_point)
+        disp('')
+        disp('----------------')
         disp('equality guard constraint')
         i
+        traj_idx
         guard_ub = 0;
       end
 
@@ -270,15 +300,18 @@ methods
       % can also add the weight here if we want
       costVal = costVal + (tau_j_minus - tau_j_plus)*costValTemp;
     end
+
+    costVal = obj.costFunctionOptions.uncertainTerrainHeightWeight*costVal;
   end
 
   function returnData = solveTraj(obj, t_init, traj_init, data)
+    % everything else should be set to zero I believe.
     z0 = obj.getInitialVars(t_init, traj_init);
 
     % initialize all the variables we have
     for idx=1:length(data.t_init)
       z0(obj.htraj_inds{idx}) = diff(data.t_init{idx});
-      z0(obj.xtraj_inds{idx}) = data.traj_init.x.eval(data.t_init{idx});
+      z0(obj.xtraj_inds{idx}) = data.traj_init{idx}.x.eval(data.t_init{idx});
     end
 
     [z,F,info,infeasible_constraint_name] = obj.solve(z0);
@@ -301,6 +334,57 @@ methods
       returnData.utraj_idx{traj_idx} = utraj_temp;
     end
 
+  end
+
+  % data should have fields
+  % - traj_idx
+  % - nominal_traj_knot_points
+  % - alternate_traj_knot_point
+  % both knot point arrays should have the same length
+  % - Q the weight matrix for the cost
+  function obj = addTrajectoryDeviationCost(obj, data)
+    if (length(data.nominal_traj_knot_points) ~= length(data.alternate_traj_knot_points))
+      error('nominal_traj_knot_points and alternate_traj_knot_point must have the same length')
+    end
+
+    temp = [data.Q, -data.Q];
+    Q = temp'*temp;
+    sz = size(Q);
+    b = zeros(sz(1),1);
+    xJ = obj.xtraj_inds{data.traj_idx};
+    for i=1:length(data.nominal_traj_knot_points)
+      nominal_idx = data.nominal_traj_knot_points(i);
+      alt_idx = data.alternate_traj_knot_points(i);
+
+      x_nom_inds = obj.x_inds(:,nominal_idx);
+      x_alt_inds = xJ(:,alt_idx);
+
+      x_ind = [x_nom_inds; x_alt_inds];
+      % x_ind{1} = x_nom_inds
+      % x_ind{2} = x_alt_inds
+      obj = obj.addCost(QuadraticConstraint(0,inf,Q,b), x_ind);
+    end
+
+  end
+
+  function obj = addEqualityConstraint(obj, x_ind_1, x_ind_2)
+    lb = zeros(4,1);
+    ub = zeros(4,1);
+    A = [eye(4),-eye(4)];
+    xind = [x_ind_1; x_ind_2];
+    cnstr = LinearConstraint(lb,ub, A);
+    obj = obj.addConstraint(cnstr, xind);
+  end
+
+  function obj = addRunningCostForTrajectory(obj, data)
+    R = 1;
+    b = 0;
+    uJ = obj.utraj_inds{data.traj_idx};
+
+    for i=1:length(uJ)
+      uind = uJ(i);
+      obj = obj.addCost(QuadraticConstraint(0,inf,R,b), uind);
+    end
   end
 
   function [xtraj, utraj] = reconstructStateAndInputTrajecotry(obj,z, traj_idx)
