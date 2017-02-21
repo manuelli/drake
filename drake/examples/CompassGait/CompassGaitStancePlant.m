@@ -32,6 +32,16 @@ classdef CompassGaitStancePlant < Manipulator
       B = [-1;1];
     end
 
+    % just gives converts the manipulator dynamics to state space form x = [q,qdot]
+    % xdot = A_lin x + B_lin u
+    function [A_lin, B_lin] = linearDynamics(obj, q, qdot)
+      [H,C,B] = obj.manipulatorDynamics(q,qdot);
+      A_lin = zeros(4,4);
+      B_lin = zeros(4,1);
+      A_lin(1:2,3:4) = eye(2);
+
+    end
+
     function [f,df] = dynamics(obj,t,x,u)
       f = dynamics@Manipulator(obj,t,x,u);
       if (nargout>1)

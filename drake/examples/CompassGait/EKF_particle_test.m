@@ -10,8 +10,8 @@ T = 10;
 
 
 %% simulation without feedback
-[ytraj, xtraj] = simulate(r, [0, T], x0);
-v = CompassGaitVisualizer(r);
+% [ytraj, xtraj] = simulate(r, [0, T], x0);
+% v = CompassGaitVisualizer(r);
 
 
 %% Optimize a trajectory for flat ground
@@ -24,16 +24,23 @@ options.numKnotPoints = 40;
 options.plant = p;
 options.u_const_across_transitions = false;
 options.stanceLegSweepAngleLowerBound = 0.25;
-options.useDeltaUCost = true;
+options.useDeltaUCost = false;
 options.deltaUCostWeight = 3.0;
 
-segmentIdx = xtraj.traj{8};
-xtraj_single_step = xtraj.traj{8};
-xtraj_single_step_no_mode = xtraj_single_step(2:5);
-[p, utraj_opt, xtraj_opt] = SingleStepOptimization(xtraj_single_step_no_mode, options);
+% segmentIdx = xtraj.traj{8};
+% xtraj_single_step = xtraj.traj{8};
+% xtraj_single_step_no_mode = xtraj_single_step(2:5);
+% [p, utraj_opt, xtraj_opt] = SingleStepOptimization(xtraj_single_step_no_mode, options);
+
+% load trajectory from file.
+% this trajectory has a nominal slope of gamma = 3, but extends to the gamma = 4 reset
+data = load('trajectory_data.mat');
+xtraj_opt = data.returnData.xtraj;
+utraj_opt = data.returnData.utraj;
 
 
-gammaVals = [3];
+
+gammaVals = [2;3;4];
 plotNominalTrajectory(xtraj_opt, gammaVals);
 
 %% Extract the nominal trajectory
@@ -44,7 +51,7 @@ xtraj_single_step = xtraj_opt;
 options = struct();
 options.Kp = 50;
 options.dampingRatio = 1.0;
-options.useLQR = true;
+options.useLQR = true; % derives PD gains from an LQR problem
 options.usePlanStanceLegVelocity = false;
 hzdController = HZDController(p, options);
 hzdController = hzdController.setNominalTrajectory(xtraj_opt, utraj_opt);
@@ -109,7 +116,7 @@ x_local = x_local_orig + delta_x;
 
 
 hybridMode = 1;
-t_f = 2;
+t_f = 3;
 
 numTimesteps = ceil((t_f-t)/dt);
 t_f = t + numTimesteps*dt;
@@ -130,7 +137,7 @@ runOptions.useObserver = true;
 
 
 % runOptions.gammaVals = gammaSlopeInteger*pi/180;
-runOptions.gammaVals = [2;3;3;3]*pi/180;
+runOptions.gammaVals = [4;3;3;3]*pi/180;
 
 
 % these options apply to the EKF and also to the Particle Filter
@@ -143,14 +150,15 @@ options.processNoiseStdDev_v = 1e-5; % was 0.01
 
 
 options.measurementNoiseIMUVar = dt*0.00;
-options.measurementNoiseEncodersVar = dt*1e-3;
+options.measurementNoiseEncodersVar = 2*dt*1e-4;
 options.numParticles = 100;
 
 truthParticleOptions = struct();
 truthParticleOptions.numParticles = 0;
 
-controllerOptions = struct();
 
+%% Controller Options
+controllerOptions = struct();
 % set the type of the controller
 % options are
 % - hzd
@@ -170,14 +178,14 @@ end
 % - deadzone
 % - robust
 % - robust_standard_control
-controllerOptions.type = 'robust'; % just standard controller
+controllerOptions.type = 'normal'; % just standard controller
 controllerOptions.robustControlDurationAfterReset = 0.16;
 % what state to use in the controller
 % options include
 % - true
 % - ekf
 % - observer
-controllerOptions.controlState = 'observer'; 
+controllerOptions.controlState = 'true'; 
 controllerOptions.estimatorIdx = 1; % which estimator to use, early, normal, late etc.
 % controllerOptions.usePlanStanceLegVelocity = true;
 
@@ -198,7 +206,7 @@ ekfOptions.dt = dt;
 
 %% Setup Luenberger Observer
 cgObserverOptions = struct();
-cgObserverOptions.epsilon = 0.05;
+cgObserverOptions.epsilon = 0.05; % this controls the observer gain basically
 cgObserver = CompassGaitObserver(plant, cgObserverOptions);
 cgObserver.initialize(hybridMode, xGlobal);
 
@@ -776,10 +784,10 @@ trajPlot.plot(trajPlotOptions)
 
 
 %% Interactive Control Plot
-figHandle_ = figure(31);
-plotData.figHandle_ = figHandle_;
-plotUtils = PlotUtility(plotData);
-plotUtils.setupPlots()
+% figHandle_ = figure(31);
+% plotData.figHandle_ = figHandle_;
+% plotUtils = PlotUtility(plotData);
+% plotUtils.setupPlots()
 
 
 

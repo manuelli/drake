@@ -74,8 +74,12 @@ classdef TimeSteppingCompassGaitPlant < CompassGaitPlant
       numSteps = max(ceil((tspan(2) - tspan(1))/dt),2);
       tspanFull = linspace(tspan(1),tspan(2),numSteps);
       
-      obj.dataHandle.data.u = u;      
-      [t,y] = ode4(odeFunStochastic, tspanFull, x_initial);
+      obj.dataHandle.data.u = u;
+      try      
+        [t,y] = ode4(odeFunStochastic, tspanFull, x_initial);
+      catch
+        testVar = 0;
+      end
 
       % check if we had a zero crossing and do some extra work.
       yPrime = y';
@@ -166,10 +170,15 @@ classdef TimeSteppingCompassGaitPlant < CompassGaitPlant
 
         % [t,y,te,ye,ie] = obj.simulateWithConstantControlInputODEStochastic(xp, tspan_post_impact, uLocal, processNoiseGlobal);
 
-        [t,y,~] = obj.simulateWithConstantControlInputODE4(xp, tspan_post_impact, uLocal, processNoiseGlobal);
+        % ode4 gets angry if tspan(1) = tspan(2), so include a little logic to avoid that case
+        if tspan_post_impact(2) > tspan_post_impact(1)
+          [t,y,~] = obj.simulateWithConstantControlInputODE4(xp, tspan_post_impact, uLocal, processNoiseGlobal);
 
-        yPrime = y';
-        x_final = yPrime(:,end);
+          yPrime = y';
+          x_final = yPrime(:,end);
+        else
+          x_final = xp;
+        end
       end
     end
 

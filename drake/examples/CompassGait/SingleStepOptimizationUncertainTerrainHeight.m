@@ -156,23 +156,32 @@ traj_opt = traj_opt.addResetMapConstraint(data);
 %   N_early = 0;
 % end
 
-% early_reset_traj_active = false;
-% if early_reset_traj_active
-%   [traj_opt, traj_idx] = traj_opt.addTrajectoryDecisionVariables(N, p_early);
-%   traj_opt = traj_opt.addTrajectoryDynamicsConstraints(traj_idx);
+early_reset_traj_active = false;
+if early_reset_traj_active
+  disp('--------')
+  disp('adding early reset trajectory knot points')
+  [traj_opt, traj_idx] = traj_opt.addTrajectoryDecisionVariables(N, p);
+  traj_opt = traj_opt.addTrajectoryDynamicsConstraints(traj_idx);
 
-%   % add reset constraint for second trajectory
-%   data.xm_idx = traj_opt.x_inds(:,N_early);
-%   data.xp_idx = traj_opt.xtraj_inds{traj_idx}(:,1);
-%   traj_opt = traj_opt.addResetMapConstraint(data);
+  % % add reset constraint for second trajectory
+  data.xm_idx = traj_opt.x_inds(:,N_early);
+  % data.xm_idx = traj_opt.xtraj_inds{traj_idx}(:,end);
+  data.xp_idx = traj_opt.xtraj_inds{traj_idx}(:,1);
+  traj_opt = traj_opt.addResetMapConstraint(data);
 
-%   % guard constraints for additional trajectory
-%   traj_opt = traj_opt.addGuardConstraints(traj_idx);
+  % guard constraints for additional trajectory
+  % these are added using the standard plant.
+  % The p_early plant is ONLY used for imposing constraint on nominal trajectory
+  traj_opt = traj_opt.addGuardConstraints(traj_idx);
 
-%   data = struct();
-%   data.traj_idx = traj_idx;
-%   traj_opt = traj_opt.addRunningCostForTrajectory(data);
-% end
+  data = struct();
+  data.traj_idx = traj_idx;
+  traj_opt = traj_opt.addIntegratedRunningCostForTrajectory(data);
+
+  if options.add_delta_t_cost
+    traj_opt = traj_opt.addDeltaTCost(options.delta_t_cost_weight*0.01, traj_idx);
+  end
+end
 
 
 %% Add terrain uncertainty cost function
@@ -203,7 +212,6 @@ data = struct();
 data.t_init = {};
 data.traj_init = {};
 
-early_reset_traj_active = false;
 if early_reset_traj_active
   traj_idx = 1;
   data.t_init{traj_idx} = t_init;

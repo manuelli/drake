@@ -79,11 +79,14 @@ methods
     
     n_vars = 2*nX + 2*nU + 1;
     cnstr = FunctionHandleConstraint(zeros(nX,1),zeros(nX,1),n_vars,@obj.constraint_fun);
-    cnstr = setName(cnstr,'collocation');
+    cnstr_name = strcat('collocation_', num2str(traj_idx),'_');
+    cnstr = setName(cnstr,cnstr_name);
 
     shared_data_index = obj.getNumSharedDataFunctions;
+    shared_data_function_indx = zeros(N,1);
       for i=1:N,
-        obj = obj.addSharedDataFunction(@obj.dynamics_data,{xinds(:,i);uinds(:,i)});
+        [obj, ind] = obj.addSharedDataFunction(@obj.dynamics_data,{xinds(:,i);uinds(:,i)});
+        shared_data_function_indx(i) = ind;
       end
       
       for i=1:N-1,
@@ -144,11 +147,27 @@ methods
   end
 
 
-  function obj = addDeltaTCost(obj, weight)
+  function obj = addDeltaTCost(obj, weight, traj_idx)
+    if nargin < 3;
+      traj_idx = 0;
+    end
+
+    if traj_idx == 0
+      h_inds = obj.h_inds;
+    else
+      h_inds = obj.htraj_inds{traj_idx};
+    end
+
     Q = weight;
     b = 0;
-    for i=1:obj.N-1
-      hind = obj.h_inds(i);
+
+    disp('----------')
+    disp('adding dt cost, traj_idx = ')
+    traj_idx
+    weight
+    disp('--------')
+    for i=1:length(h_inds)
+      hind = h_inds(i);
       obj = obj.addCost(QuadraticConstraint(0,inf,Q,b), hind);
     end
   end
@@ -384,6 +403,21 @@ methods
     for i=1:length(uJ)
       uind = uJ(i);
       obj = obj.addCost(QuadraticConstraint(0,inf,R,b), uind);
+    end
+  end
+
+  function obj = addIntegratedRunningCostForTrajectory(obj, data)
+    uJ = obj.utraj_inds{data.traj_idx};
+    hJ = obj.htraj_inds{data.traj_idx};
+    xJ = obj.xtraj_inds{data.traj_idx};
+
+    running_cost = FunctionHandleObjective(1+obj.nX + obj.nU, @(h,x,u)CompassGaitTrajectoryOptimizationUtils.controlInputQuadraticCostIntegrated(h,x,u));
+
+    for i=1:length(hJ)
+      uind = uJ(:,i);
+      hind = hJ(i);
+      xind = xJ(:,i);
+      obj = obj.addCost(running_cost, {hind; xind; uind});
     end
   end
 

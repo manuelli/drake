@@ -30,6 +30,10 @@ function plotControlData(inputData, inputOptions)
 
   u_robust_pd = 0*uActual_grid;
 
+  numIdx = length(idxRange);
+  numTerrainHeights = length(inputData.particleFilter.options_.gammaVals);
+  terrainHeightCountArray = zeros(numTerrainHeights,numIdx);
+
   u_observers = {}; % record the control inputs we would have gotten from the observers
   num_observers = 0;
   if isfield(inputData, 'observerBankParticleArray')
@@ -72,6 +76,11 @@ function plotControlData(inputData, inputOptions)
 
       u_robust_pd(i) = inputData.pdController.computeRobustControlFromParticleSet(particleSet);
     end
+
+    terrainHeightCount = inputData.particleFilter.getNumParticlesForEachTerrainHeight(particleSet);
+
+    terrainHeightCountArray(:,i) = terrainHeightCount;
+
 
     u_blend(i) = mode_1_fraction(i)*u_mode_1(i) + (1-mode_1_fraction(i))*u_mode_2(i);
     u_robust_blend(i) = mode_1_fraction(i)*u_mode_1_robust(i) + (1-mode_1_fraction(i))*u_mode_2_robust(i);
@@ -117,7 +126,7 @@ function plotControlData(inputData, inputOptions)
   end
 
 
-  numPlots = 2;
+  numPlots = 3;
 
   fig = figure(figCounter);
   clf(fig);
@@ -185,6 +194,21 @@ function plotControlData(inputData, inputOptions)
   hold off;
 
 
+  subplot(numPlots, 1, 3);
+  hold all;
+  gammaVals = inputData.particleFilter.options_.gammaVals;
+  for i=1:numel(gammaVals)
+    gammaInt = gammaVals(i)*180/pi;
+    name = strcat('gamma = ', num2str(gammaInt));
+    plot(t_grid, terrainHeightCountArray(i,:), 'DisplayName', name)
+  end
+  legend('show');
+  title('terrain height count');
+  xlabel('time');
+  ylabel('num particles');
+  hold off;
+
+
 
   figCounter = figCounter + 1;
   fig = figure(figCounter);
@@ -243,5 +267,9 @@ function plotControlData(inputData, inputOptions)
 
   end
   hold off;
+
+
+  figCounter = figCounter + 1;
+
 
 end

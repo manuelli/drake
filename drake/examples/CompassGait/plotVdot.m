@@ -1,5 +1,7 @@
-function plotVdot(hzdController, controlTrajs, t_center)
-  fig = figure(20);
+function plotVdot(hzdController, controlTrajs, t_center, xtraj)
+  figCounter = 20;
+  fig = figure(figCounter);
+  figCounter = figCounter + 1;
   clf(fig);
   set(fig,'Visible', 'off');
 
@@ -27,10 +29,34 @@ function plotVdot(hzdController, controlTrajs, t_center)
   VGrid = controlTrajs.controlData.V.eval(tGrid);
   VTildeGrid = controlTrajs.controlDataOther.V.eval(tGrid);
 
-  subplot(2,1,2);
+  uActualGrid = 0*tGrid;
+  uRobustGrid = 0*tGrid;
+
+
+  % figure out what the robust control input would have been
+  for i=1:length(tGrid)
+    t = tGrid(i);
+    x = xtraj.eval(t);
+    % now figure out what the uncertainty aware controller would have done
+    [uRobust, robustData] = hzdController.computeUncertaintyAwareControlInput(x);
+    uActual = controlTrajs.controlData.u.eval(t);
+
+    uActualGrid(i) = uActual;
+    uRobustGrid(i) = uRobust;
+  end
+
+  subplot(3,1,2);
   hold on;
   plot(tGrid, VGrid, 'b', 'DisplayName', 'V');
   plot(tGrid, VTildeGrid, 'r', 'DisplayName', 'V tilde');
+  title('V and V tilde')
+  hold off;
+
+  subplot(3,1,3);
+  hold on;
+  title('u and uRobust')
+  plot(tGrid, uActualGrid, 'b');
+  plot(tGrid, uRobustGrid, 'r');
   hold off;
 
 
@@ -38,6 +64,8 @@ function plotVdot(hzdController, controlTrajs, t_center)
     t = get(source,'Value');
     % t = getClosestTime(t);
     S = hzdController.S;
+
+    x = xtraj.eval(t);
 
     y = controlTrajs.controlData.y.eval(t);
     ydot = controlTrajs.controlData.ydot.eval(t);
@@ -75,29 +103,48 @@ function plotVdot(hzdController, controlTrajs, t_center)
     V_dot_Tilde = 2*[yTilde, ydotTilde] * S * [ydotTilde*onesGrid; A_y_Tilde - B_y_Tilde*uGrid];
 
 
+    % now figure out what the uncertainty aware controller would have done
+    [uRobust, robustData] = hzdController.computeUncertaintyAwareControlInput(x);
+
+
 %     clf(fig);
 
     for i=1:length(handle)
         delete(handle{i});
     end
 
-    subplot(2,1,1)
-    hold on;    
-    handle{1} = plot(uGrid, V_dot, 'b', 'DisplayName', 'V dot');
-    handle{2} = plot(uGrid, V_dot_Tilde, 'r', 'DisplayName', 'V dot Tilde');
-    handle{3} = scatter(uActual, V_dot_actual, 150, 'g', 'filled', 'DisplayName', 'V dot actual');
-    handle{4} = scatter(uActual, V_dot_Tilde_actual, 150, 'm', 'filled', 'DisplayName', 'V dot tilde actual');
+    subplot(3,1,1)
+    hold on;
+    handle = {};  
+    handle{end+1} = plot(uGrid, V_dot, 'b', 'DisplayName', 'V dot');
+    handle{end+1} = plot(uGrid, V_dot_Tilde, 'r', 'DisplayName', 'V dot Tilde');
+    handle{end+1} = scatter(uActual, V_dot_actual, 150, 'g', 'filled', 'DisplayName', 'V dot actual');
+    handle{end+1} = scatter(uActual, V_dot_Tilde_actual, 150, 'm', 'filled', 'DisplayName', 'V dot tilde actual');
+
+    handle{end+1} = scatter(uRobust, robustData.V_dot, 150, 'c', 'filled', 'DisplayName', 'V dot robust');
+
+    handle{end+1} = scatter(uRobust, robustData.V_dot_other, 150, 'y', 'filled', 'DisplayName', 'V dot robust tilde');
+
     % legend('show');
     titleString = strcat('t = ', num2str(t));
     title(titleString);
     hold off
-
+ 
     % % plot the V values
-    subplot(2,1,2)
+    subplot(3,1,2)
     hold on;
-    handle{5} = scatter(t,V_actual, 150, 'b', 'filled');
-    handle{6} = scatter(t, V_Tilde_actual, 150, 'r', 'filled');
+    handle{end+1} = scatter(t,V_actual, 150, 'b', 'filled');
+    handle{end+1} = scatter(t, V_Tilde_actual, 150, 'r', 'filled');
     hold off;
+
+    % % plot the u values
+    subplot(3,1,3)
+    hold on;
+    handle{end+1} = scatter(t,uActual, 150, 'b', 'filled');
+    handle{end+1} = scatter(t, uRobust, 150, 'r', 'filled');
+    hold off;
+
+    
   end
 
 

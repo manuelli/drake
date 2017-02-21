@@ -439,6 +439,19 @@ classdef CompassGaitParticleFilter < handle
     function particleSetCopy = getCopyOfParticleSet(obj)
       particleSetCopy = CompassGaitParticle.copyParticleSet(obj.particleSet_);
     end
+
+
+    function terrainHeightCount = getNumParticlesForEachTerrainHeight(obj, particleSet)
+      gammaVals = obj.options_.gammaVals;
+      terrainHeightCount = zeros(length(gammaVals),1);
+
+      for i=1:numel(particleSet)
+        particle = particleSet{i};
+        [~, idx] = min(abs(gammaVals - particle.gamma_));
+        terrainHeightCount(idx) = terrainHeightCount(idx) + 1;
+      end
+
+    end
   end
 
 end

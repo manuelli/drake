@@ -22,7 +22,6 @@ classdef CompassGaitUtils
       end
     end
 
-    % transforms covariance matrix in local coords to global coords
     function sigmaGlobal = transformLocalToGlobalCovarianceMatrix(obj, hybridMode, sigmaLocal)
       if (hybridMode == 1)
         sigmaGlobal = sigmaLocal;
