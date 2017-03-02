@@ -62,7 +62,12 @@ class LinkWidget(object):
     # need to return the cellID of the picke thing
     def getSelection(self, displayPoint):
 
-        pickedPoint, pickedProp, pickedDataset, normal, pickedCellId = vis.pickPoint(displayPoint, self.view, pickType='cells', tolerance=0.0, returnNormal=True)
+        pickData = vis.pickPoint(displayPoint, self.view, pickType='cells', tolerance=0.0, returnNormal=True)
+
+        pickedPoint = pickData.pickedPoint
+        pickedDataset = pickData.pickedDataset
+        normal = pickData.pickedNormal
+        pickedCellId = pickData.pickedCellId
 
         if not pickedDataset:
             return None
@@ -114,7 +119,7 @@ class LinkWidget(object):
         if selection is None:
             return
         pickedPoint, linkName, normal, pickedCellId = selection
-        
+
 
         # add this as an external force with magnitude zero
         if self.linkName is not None:
