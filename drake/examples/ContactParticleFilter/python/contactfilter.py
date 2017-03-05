@@ -52,7 +52,7 @@ class ContactFilter(object):
 
         self.robotStateJointController = robotStateJointController
         self.robotStateModel = robotStateModel
-        self.initializeOptions(configFilename=configFilename)
+        self.options = cfUtils.loadConfig(configFilename)
         self.loadDrakeModelFromFilename()
         self.initializeRobotPoseTranslator()
         self.initializeConstants()
@@ -154,18 +154,6 @@ class ContactFilter(object):
         print "total QP Solve Time ", self.debugInfo['totalQPSolveTime']
         print "measurement update time: ", self.debugInfo['measurementUpdateTime']
         print ""
-
-    # should move this stuff into a config file so that we
-    # can play with different parameter sets
-    def initializeOptions(self, configFilename="contact_particle_filter_config.yaml"):
-
-
-        # load the options from the config file
-        drake_source_dir = os.getenv("DRAKE_SOURCE_DIR")
-        fullFileName = drake_source_dir +'/drake/examples/ContactParticleFilter/config/' + configFilename
-        stream = file(fullFileName)
-        self.options = yaml.load(stream)
-
 
 
     def initializeTestTimers(self):

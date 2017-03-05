@@ -48,7 +48,7 @@ def createNamedTupleFromDict(d, name='Default'):
 
     return x
 
-def loadConfig(config_filename):
+def loadConfig(config_filename="contact_particle_filter_config.yaml"):
     # load the options from the config file
     drake_source_dir = os.getenv("DRAKE_SOURCE_DIR")
     fullFileName = drake_source_dir + '/drake/examples/ContactParticleFilter/config/' + config_filename

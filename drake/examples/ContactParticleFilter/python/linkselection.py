@@ -62,7 +62,7 @@ class LinkWidget(object):
     # need to return the cellID of the picke thing
     def getSelection(self, displayPoint):
 
-        pickData = vis.pickPoint(displayPoint, self.view, pickType='cells', tolerance=0.0, returnNormal=True)
+        pickData = vis.pickPoint(displayPoint, self.view, pickType='cells', tolerance=0.0)
 
         pickedPoint = pickData.pickedPoint
         pickedDataset = pickData.pickedDataset

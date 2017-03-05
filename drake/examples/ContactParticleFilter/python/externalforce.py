@@ -39,7 +39,7 @@ class ExternalForce(object):
         self.robotSystem = robotSystem
         self.robotStateModel = robotSystem.robotStateModel
         self.robotStateModel.connectModelChanged(self.onModelChanged)
-        self.initializeOptions(configFilename)
+        self.options = cfUtils.loadConfig(configFilename)
 
         self.loadDrakeModelFromFilename()
         self.initializeRobotPoseTranslator()
@@ -122,25 +122,6 @@ class ExternalForce(object):
 
         return utime
 
-    #
-    # def initializeOptions(self):
-    #     self.options = {}
-    #     self.options['debug'] = {}
-    #     self.options['debug']['publishTrueResidual'] = True
-    #
-    #     self.options['noise'] = {}
-    #     self.options['noise']['addNoise'] = True
-    #     self.options['noise']['stddev'] = 0.1
-
-    def initializeOptions(self, configFilename="contact_particle_filter_config.yaml"):
-
-        # load the options from the config file
-        drake_source_dir = os.getenv("DRAKE_SOURCE_DIR")
-        fullFileName = drake_source_dir +'/drake/examples/ContactParticleFilter/config/' + configFilename
-        stream = file(fullFileName)
-        self.options = yaml.load(stream)
-
-
     def loadDrakeModelFromFilename(self, filename=None):
         urdf_filename = self.options['robot']['urdf']
         floatingBaseTypeString = self.options['robot']['floatingBaseType']
@@ -207,7 +188,7 @@ class ExternalForce(object):
             d['linkName'] = linkName
 
 
-        
+
 
 
         d['time'] = time.time()
@@ -243,7 +224,7 @@ class ExternalForce(object):
             return
 
         visObjectName = key + ' external force'
-        self.externalForces.pop(key, None)        
+        self.externalForces.pop(key, None)
 
         if not callFromFrameObj:
             om.removeFromObjectModel(om.findObjectByName(visObjectName))
@@ -261,7 +242,7 @@ class ExternalForce(object):
         keysToRemove = []
         for key, value in self.externalForces.iteritems():
             elapsed = time.time() - value['time']
-    
+
             if elapsed > self.timeout:
                 keysToRemove.append(key)
 
@@ -444,7 +425,7 @@ class ExternalForce(object):
         self.removeAllForces()
         self.timer.start()
 
-    def stopPublishing(self): 
+    def stopPublishing(self):
         print "stopping publishing"
         self.timer.stop()
 
@@ -484,7 +465,7 @@ class ExternalForce(object):
 
 
     def drawForce(self, name, linkName, forceLocation, force, color, key=None):
-        
+
         forceDirection = force/np.linalg.norm(force)
         # om.removeFromObjectModel(om.findObjectByName(name))
 
@@ -503,13 +484,13 @@ class ExternalForce(object):
 
         obj = vis.updatePolyData(self.plungerPolyData, name, color=color)
         obj.actor.SetUserTransform(transformForVis)
-        
+
 
         if key is not None and om.findObjectByName(name) is not None:
             obj.addProperty('magnitude', self.externalForces[key]['forceMagnitude'])
             obj.addProperty('linkName', linkName)
             obj.addProperty('key', key)
-            obj.connectRemovedFromObjectModel(self.removeForceFromFrameObject)        
+            obj.connectRemovedFromObjectModel(self.removeForceFromFrameObject)
 
         obj.properties.connectPropertyChanged(functools.partial(self.onPropertyChanged, obj))
         return obj
@@ -535,7 +516,7 @@ class ExternalForce(object):
 
             # point = forceLocationInWorld - 0.1*forceDirectionInWorld
 
-            
+
 
             # d = DebugData()
             # # d.addArrow(point, forceLocationInWorld, headRadius=0.025, tubeRadius=0.005, color=color)
@@ -544,7 +525,7 @@ class ExternalForce(object):
 
 
             obj = self.drawForce(name, linkName, val['forceLocation'], val['forceDirection'], color, key=key)
-            
+
 
     def onModelChanged(self, model):
         self.drawForces()

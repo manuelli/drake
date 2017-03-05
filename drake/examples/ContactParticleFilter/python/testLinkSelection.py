@@ -43,7 +43,7 @@ class LinkWidget(object):
 
     def getSelection(self, displayPoint):
 
-        pickedPoint, pickedProp, pickedDataset, normal = vis.pickPoint(displayPoint, self.view, pickType='cells', tolerance=0.0, returnNormal=True)
+        pickedPoint, pickedProp, pickedDataset, normal = vis.pickPoint(displayPoint, self.view, pickType='cells', tolerance=0.0)
 
         if not pickedDataset:
             return None

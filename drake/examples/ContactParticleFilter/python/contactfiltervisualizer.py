@@ -20,7 +20,7 @@ class ContactFilterVisualizer(object):
         self.robotSystem = robotSystem
         self.addSubscribers()
         self.visualize = True
-        self.initializeOptions()
+        self.options = cfUtils.loadConfig()
 
     def start(self):
         self.visualize = True
@@ -153,11 +153,11 @@ class ContactFilterVisualizer(object):
 
         self.drawParticleSetList(particleSetList)
 
-    def initializeOptions(self, configFilename="contact_particle_filter_config.yaml"):
-
-
-        # load the options from the config file
-        drake_source_dir = os.getenv("DRAKE_SOURCE_DIR")
-        fullFileName = drake_source_dir +'/drake/examples/ContactParticleFilter/config/' + configFilename
-        stream = file(fullFileName)
-        self.options = yaml.load(stream)
+    # def initializeOptions(self, configFilename="contact_particle_filter_config.yaml"):
+    #
+    #
+    #     # load the options from the config file
+    #     drake_source_dir = os.getenv("DRAKE_SOURCE_DIR")
+    #     fullFileName = drake_source_dir +'/drake/examples/ContactParticleFilter/config/' + configFilename
+    #     stream = file(fullFileName)
+    #     self.options = yaml.load(stream)

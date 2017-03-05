@@ -1,5 +1,5 @@
 robot:
-  urdf: /drake/examples/kuka_iiwa_arm/urdf/iiwa14_simplified_collision.urdf
+  urdf: /drake/examples/kuka_iiwa_arm/models/iiwa14/iiwa14_simplified_collision.urdf
   # options are 
   # - FIXED
   # - ROLLPITCHYAW
