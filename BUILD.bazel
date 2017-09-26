@@ -73,6 +73,7 @@ install(
         "//drake/lcmtypes:install",
         "//drake/manipulation/models:install_data",
         "//tools:install",
+        "//drake/examples/kuka_iiwa_arm:kuka_plan_runner_exec"
     ] + DRAKE_EXTERNAL_PACKAGE_INSTALLS,
 )
 
